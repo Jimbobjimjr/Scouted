@@ -1,0 +1,1002 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scouted</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one-screen game. HUD strip on top, comms transcript in the middle, action panel at the bottom. Single dark Valor look. */
+:root{
+  color-scheme:dark;
+  --bg:#080d22; --panel:#10183a; --panel2:#17214b; --line:#26326b; --line2:#334190;
+  --text:#ecefff; --muted:#9ba5d6; --dim:#6a74a8;
+  --blue:#3f8cff; --violet:#8b5cff; --violet2:#b49bff;
+  --good:#38d39f; --warn:#ffb648; --bad:#ff6b7d;
+  --display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.5;overflow:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;
+  background:
+   radial-gradient(1200px 600px at 50% -10%, rgba(139,92,255,.18), transparent 60%),
+   radial-gradient(900px 500px at 100% 110%, rgba(63,140,255,.12), transparent 60%),
+   linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0/100% 32px,
+   linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px) 0 0/32px 100%;}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--violet2);outline-offset:2px}
+#app{position:relative;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:minmax(0,1fr)}
+
+/* HUD */
+.hud{display:flex;align-items:center;gap:12px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:rgba(8,13,34,.85);backdrop-filter:blur(6px);flex-wrap:wrap}
+.hud .ch{font-family:var(--display);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px}
+.hud .place{display:flex;align-items:center;gap:8px;min-width:0;flex:1;font-size:13px;color:var(--muted)}
+.hud .place b{color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mode{font-family:var(--mono);font-size:11px;letter-spacing:.08em;padding:3px 8px;border-radius:4px;border:1px solid var(--line2);white-space:nowrap;text-transform:uppercase}
+.mode.voice{border-color:var(--violet);color:var(--violet2)}
+.mode.voice::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:1px;animation:blink 1.4s infinite}
+.mode.chat{border-color:var(--blue);color:#9cc3ff}
+@keyframes blink{50%{opacity:.25}}
+.tag{font-family:var(--mono);font-size:11px;padding:3px 7px;border-radius:4px;letter-spacing:.04em;white-space:nowrap}
+.tag.k{background:rgba(63,140,255,.16);color:#a9c9ff;border:1px solid rgba(63,140,255,.5)}
+.tag.t{background:rgba(139,92,255,.18);color:var(--violet2);border:1px solid rgba(139,92,255,.55)}
+.hbtn{background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer}
+.hbtn:hover{border-color:var(--violet)}
+
+/* transcript */
+.log{overflow-y:auto;padding-block:20px 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));scroll-behavior:smooth}
+.log-in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.ln{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:start;animation:rise .28s ease-out both}
+.ln .av{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:14px;color:#0b1026}
+.ln .who{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.05em;text-transform:uppercase;display:flex;gap:8px;align-items:baseline}
+.ln .who small{font-family:var(--body);text-transform:none;letter-spacing:0;color:var(--dim);font-weight:400;font-size:12px}
+.ln .tx{min-width:0;font-size:17px}
+.ln.voice .tx{font-size:17px}
+.ln.voice .who::after{content:"";width:22px;height:10px;background:repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 5px);opacity:.6;mask:linear-gradient(transparent 30%,#000 30% 70%,transparent 70%);align-self:center}
+.ln.chat .tx{background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:4px 14px 14px 14px;justify-self:start;max-width:min(560px,100%)}
+.ln.sys{display:block;color:var(--muted);font-style:italic;padding:2px 0 2px 52px}
+.ln.sys.tut{font-style:normal;color:var(--violet2);font-family:var(--mono);font-size:13px;border:1px dashed rgba(139,92,255,.5);border-radius:8px;padding:8px 12px;margin-left:52px}
+.ln.you{display:flex;justify-content:flex-end}
+.ln.you .tx{background:linear-gradient(135deg,var(--violet),#6a45e6);color:#fff;padding:9px 14px;border-radius:14px 4px 14px 14px;max-width:min(560px,92%)}
+.ln.you.silent .tx{background:transparent;border:1px dashed var(--line2);color:var(--muted);font-style:italic}
+.scene-break{display:flex;align-items:center;gap:12px;color:var(--dim);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin:10px 0 2px;animation:rise .3s both}
+.scene-break::before,.scene-break::after{content:"";flex:1;height:1px;background:var(--line)}
+@keyframes rise{from{opacity:.0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* bottom panel */
+.panel{border-top:1px solid var(--line);background:rgba(13,20,50,.96);padding-block:14px calc(14px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.panel-in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.cont{align-self:stretch;background:transparent;border:1px solid var(--line2);border-radius:10px;padding:12px;cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.06em}
+.cont:hover{border-color:var(--violet);color:var(--text)}
+.q{font-family:var(--display);font-weight:600;font-size:15px;color:var(--violet2);letter-spacing:.03em}
+.timer{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.timer i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--violet),var(--blue));transform-origin:left}
+.timer.low i{background:var(--bad)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:620px){.opts{grid-template-columns:1fr}}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:11px 12px;cursor:pointer;font-size:15px;line-height:1.35;transition:border-color .15s,transform .1s}
+.opt:hover{border-color:var(--violet);transform:translateY(-1px)}
+.opt kbd{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--line2);border-radius:4px;padding:1px 6px;color:var(--muted);margin-top:1px}
+.opt.pick{border-color:var(--violet2);background:rgba(139,92,255,.2)}
+.opt.q2{border-color:var(--good)} .opt.q1{border-color:var(--warn)} .opt.q0{border-color:var(--bad)}
+.opt[disabled]{cursor:default;transform:none}
+.opt.dim{opacity:.45}
+
+/* minigame */
+.gm-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.gm-title{font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:14px}
+.gm-sit{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--muted)}
+.slots{display:flex;gap:6px;flex-wrap:wrap}
+.slot{font-family:var(--mono);font-size:12px;padding:5px 9px;border-radius:6px;border:1px solid var(--line2);color:var(--dim)}
+.slot.on{border-color:var(--violet);color:var(--violet2);background:rgba(139,92,255,.14)}
+.slot.done{border-color:var(--good);color:var(--good)}
+.slot-label{display:flex;gap:10px;align-items:baseline}
+.slot-label .big{font-family:var(--display);font-size:26px;font-weight:700;color:var(--violet2);line-height:1}
+.slot-label .nm{font-family:var(--display);font-weight:600;font-size:16px}
+.slot-label .hint{color:var(--muted);font-size:14px}
+.fb{display:flex;flex-direction:column;gap:8px;max-height:38vh;overflow-y:auto}
+.fb-row{display:grid;grid-template-columns:auto 1fr;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+.fb-row .k{font-family:var(--display);font-weight:700;color:var(--violet2);min-width:22px}
+.fb-row .w{color:var(--muted)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:0}
+.dot.q2{background:var(--good)}.dot.q1{background:var(--warn)}.dot.q0{background:var(--bad)}
+.score{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.score b{color:var(--text);font-size:16px}
+.callcard{position:relative;background:linear-gradient(135deg,rgba(61,214,176,.12),rgba(139,92,255,.12));border:1px solid rgba(61,214,176,.6);border-radius:12px;padding:16px;font-size:20px;font-family:var(--display);font-weight:600;text-align:center;min-height:84px;display:grid;place-items:center}
+.callcard.gone{color:var(--dim);font-family:var(--mono);font-size:13px;font-weight:500;border-style:dashed}
+.ping{position:absolute;right:10px;top:-14px;background:var(--warn);color:#1a1300;font-family:var(--body);font-size:13px;font-weight:700;padding:5px 10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);animation:shake .5s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+
+/* toasts */
+.toasts{position:fixed;top:calc(64px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:40;pointer-events:none;width:min(420px,calc(100% - 32px))}
+.toast{display:flex;align-items:center;gap:10px;background:rgba(16,24,58,.97);border:1px solid var(--line2);border-left:4px solid var(--violet);border-radius:10px;padding:10px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:tin .35s ease-out both}
+.toast .av{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:11px;color:#0b1026;flex:none}
+.toast.out{animation:tout .4s ease-in forwards}
+@keyframes tin{from{opacity:0;transform:translateY(-10px)}}
+@keyframes tout{to{opacity:0;transform:translateY(-10px)}}
+
+/* overlays */
+.ov{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-block:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.ov-in{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.title-wrap{min-height:100%;display:flex;flex-direction:column;justify-content:center}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--violet2);text-transform:uppercase}
+h1.logo{font-family:var(--display);font-weight:700;font-size:clamp(56px,13vw,120px);line-height:.9;letter-spacing:.02em;margin:6px 0 0;text-transform:uppercase;background:linear-gradient(180deg,#fff 30%,var(--violet2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{font-size:18px;color:var(--muted);max-width:60ch;margin:0}
+.lede b{color:var(--text)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{background:linear-gradient(135deg,var(--violet),#6a45e6);border:0;border-radius:10px;padding:12px 20px;font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;color:#fff}
+.btn.ghost{background:transparent;border:1px solid var(--line2);color:var(--text)}
+.btn.ghost:hover{border-color:var(--violet)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.field input{background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:11px 14px;font:inherit;font-size:18px;color:var(--text);width:min(320px,100%)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--violet);color:#fff}
+.chgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.chcard{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.chcard:hover{border-color:var(--violet)}
+.chcard .n{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.chcard .ttl{font-family:var(--display);font-weight:700;font-size:17px}
+.chcard .s{font-size:13px;color:var(--muted)}
+.sec-h{font-family:var(--display);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0}
+.toolcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.tc{border-radius:14px;padding:16px;border:1px solid;display:flex;flex-direction:column;gap:10px}
+.tc.k{border-color:rgba(63,140,255,.6);background:linear-gradient(160deg,rgba(63,140,255,.16),rgba(63,140,255,.04))}
+.tc.t{border-color:rgba(139,92,255,.65);background:linear-gradient(160deg,rgba(139,92,255,.2),rgba(139,92,255,.04))}
+.tc .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.tc.k .lbl{color:#a9c9ff}.tc.t .lbl{color:var(--violet2)}
+.tc h3{font-family:var(--display);font-size:22px;margin:0;line-height:1.1;text-wrap:balance}
+.tc p{margin:0;color:var(--muted);font-size:15px}
+.steps{display:flex;flex-direction:column;gap:6px}
+.steps div{display:grid;grid-template-columns:30px 1fr;gap:8px;align-items:baseline;font-size:15px}
+.steps b{font-family:var(--display);font-size:20px;color:var(--violet2)}
+.steps span em{color:var(--muted);font-style:normal}
+.picks{display:flex;flex-direction:column;gap:8px}
+.pick{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.pick .a{font-size:15px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.chip.up{border-color:rgba(56,211,159,.6);color:var(--good)}
+.chip.dn{border-color:rgba(255,107,125,.6);color:var(--bad)}
+.reflect{border:1px dashed var(--line2);border-radius:12px;padding:14px 16px}
+.reflect p{margin:6px 0 0;font-size:17px}
+.bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.bar{display:flex;flex-direction:column;gap:5px}
+.bar .top{display:flex;justify-content:space-between;font-size:14px}
+.bar .top span:last-child{font-family:var(--mono);color:var(--muted);font-size:12px}
+.bar .tr{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.bar .tr i{display:block;height:100%;border-radius:4px}
+.relgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rel{display:grid;grid-template-columns:42px 1fr;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+.rel .av{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-family:var(--display);font-weight:700;color:#0b1026}
+.rel .nm{font-family:var(--display);font-weight:600}
+.rel .st{font-size:13px;color:var(--muted)}
+.pips{display:flex;gap:3px;margin-top:4px}
+.pips i{width:14px;height:5px;border-radius:2px;background:var(--panel2)}
+.pips i.on{background:var(--violet2)}
+.pips i.neg{background:var(--bad)}
+.ending h2.end-t{font-family:var(--display);font-size:clamp(34px,7vw,56px);line-height:1;margin:4px 0 0;text-transform:uppercase}
+.ending p{font-size:17px;margin:0;max-width:65ch}
+.ending .ep{display:flex;flex-direction:column;gap:10px}
+.notes table{width:100%;border-collapse:collapse;font-size:14px}
+.notes th,.notes td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.notes th{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.tbl{overflow-x:auto}
+.notes ul{margin:0;padding-left:20px;color:var(--muted)}
+.notes li{margin:4px 0}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(380px,100%);z-index:35;background:var(--panel);border-left:1px solid var(--line2);padding-block:calc(18px + env(safe-area-inset-top,0px)) 18px;padding-left:18px;padding-right:max(18px,env(safe-area-inset-right,0px));overflow-y:auto;display:flex;flex-direction:column;gap:14px;box-shadow:-20px 0 40px rgba(0,0,0,.4)}
+.drawer .rel{background:var(--panel2)}
+@media (max-width:620px){#hudTags,.hud .place b{display:none}.hud{flex-wrap:nowrap;gap:8px}.hud .ch{font-size:12px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hud .place{flex:none}.gm-sit{font-size:14px;padding:8px 10px}.ln .tx{font-size:16px}.opt{font-size:14px;padding:9px 10px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.log{scroll-behavior:auto}}
+</style>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}</style>
+</head>
+<body>
+
+
+<div id="app">
+  <header class="hud">
+    <span class="ch" id="hudCh">Scouted</span>
+    <span id="hudTags" class="row" style="gap:6px"></span>
+    <span class="place"><span class="mode" id="hudMode">room</span><b id="hudPlace"></b></span>
+    <button class="hbtn" id="teamBtn" type="button">Team</button>
+    <button class="hbtn" id="menuBtn" type="button">Menu</button>
+  </header>
+  <main class="log" id="log" aria-live="polite"><div class="log-in" id="logIn"></div></main>
+  <footer class="panel"><div class="panel-in" id="panel"></div></footer>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="ov" id="ov" hidden></div>
+<div class="drawer" id="drawer" hidden></div>
+
+<script>
+/* ---------- cast ---------- */
+const CAST={
+  coach:{n:'Coach Raman',r:'Head coach',c:'#b49bff',i:'PR'},
+  mako:{n:'Mako',r:'Captain, shot caller',c:'#5aa2ff',i:'MK'},
+  jules:{n:'Jules',r:'Entry',c:'#ff8a7a',i:'JL'},
+  theo:{n:'Theo',r:'Support',c:'#3dd6b0',i:'TH'},
+  dee:{n:'Dee',r:'Best friend',c:'#f5c451',i:'DE'},
+  sam:{n:'Sam',r:'Analyst',c:'#a9b4d6',i:'SM'},
+  ryder:{n:'Ryder',r:'Blaze Syndicate',c:'#ff9f43',i:'RY'},
+  host:{n:'Lou',r:'League stream host',c:'#c7d2fe',i:'LU'},
+  opp:{n:'Northgate_Ace',r:'All chat',c:'#7d86b3',i:'NG'},
+  rid:{n:'Ridgeline_Cap',r:'All chat',c:'#7d86b3',i:'RL'}
+};
+const RELS=['coach','mako','jules','theo','dee'];
+const SKILLS={clear:'Clear Messaging',listen:'Listening',story:'Storytelling',calm:'Influence'};
+const VALUES={positive:'Positive',purpose:'Purposeful',respect:'Respectful'};
+const LABEL=k=>CAST[k]?CAST[k].n:(SKILLS[k]||VALUES[k]||k);
+
+/* ---------- state ---------- */
+const fresh=()=>({name:'Nova',ch:0,v:{coach:0,mako:0,jules:0,theo:0,dee:0,clear:0,listen:0,story:0,calm:0,positive:0,purpose:0,respect:0},f:{},g:{},log:[],picks:{}});
+let S=fresh();
+let SET={timer:'normal'};
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const savedSet=store.get('scouted.settings'); if(savedSet) SET=Object.assign(SET,savedSet);
+const tmul=()=>SET.timer==='relaxed'?2:1;
+const timersOn=()=>SET.timer!=='off';
+
+/* ---------- script helpers ---------- */
+const L=(s,x)=>({s,x});
+const N=x=>({s:'sys',x});
+const TUT=x=>({s:'sys',x,tut:1});
+const YOU=x=>({s:'you',x});
+const SC=(place,mode)=>({t:'scene',place,mode});
+const C=(time,q,o,to)=>({t:'choice',time,q,o,to});
+const O=(x,fx,then,mem,extra)=>Object.assign({x,fx:fx||{},then:then||[],mem},extra||{});
+const IF=(c,y,n)=>({t:'if',c,y,n});
+const DYN=f=>({t:'dyn',f});
+const FX=fx=>({t:'fx',fx});
+const FLAG=k=>({t:'do',f:s=>{s.f[k]=1}});
+const G=(kind,d)=>Object.assign({t:'game',kind},d);
+const nm=x=>typeof x==='function'?x(S):String(x).replace(/\{name\}/g,S.name);
+
+/* ---------- minigame content ---------- */
+const GAME_SDV={id:'sdv',skill:'clear',time:35,title:'Call builder: State, Describe, Verify',
+  sit:'Round 2 is about to start. You want the middle objective early. Mako calls the timing, Jules holds left, Theo backs you up. You all move at 1:30.',
+  slots:[
+   {k:'S',n:'State',h:'What are we doing?',o:[
+     {x:'Our goal this round: take the middle objective early.',q:2,w:'One clear goal. Everyone knows what the round is for.'},
+     {x:"Let's just play it out and see what happens.",q:0,w:'There is no goal here, so everyone makes up their own.'},
+     {x:"Middle. Fast. Don't mess it up like last round.",q:0,w:'Short, but it is a dig at the team, and "fast" is not a plan.'}]},
+   {k:'D',n:'Describe',h:'What does each person do?',o:[
+     {x:'Mako calls timing, Jules holds left, Theo backs me up. We move at 1:30.',q:2,w:'Every person has a job and there is a time. Nobody has to guess.'},
+     {x:'Everyone do your usual thing.',q:0,w:'Usual to who? This leaves the same gaps as last round.'},
+     {x:'Jules left, Theo with me.',q:1,w:'Good start, but there is no timing and nothing for Mako.'}]},
+   {k:'V',n:'Verify',h:'Check it landed',o:[
+     {x:"Theo, tell me where you're going and when we move.",q:2,w:'A repeat back shows you what Theo actually heard.'},
+     {x:'Do you get it?',q:0,w:'Most people just say yes. You learn nothing.'},
+     {x:'Cool? Cool.',q:0,w:"That isn't a check. It's a hope."}]}
+  ]};
+const GAME_MIRROR={id:'mirror',skill:'listen',show:4.5,time:12,who:'theo',title:'Listen, Mirror, Check',
+  sit:'Theo will make three calls. Each one shows for a few seconds, then it is gone. Listen fully, then pick the mirror and check you would say back.',
+  rounds:[
+   {call:'Rotate right on the next timer, then hold the long corridor.',ping:'Jules: did you see that clip I sent??',o:[
+     {x:'So we rotate right on the next timer and I hold the long corridor? Is that right?',q:2},
+     {x:'So we rotate left and hold the long corridor? Is that right?',q:0,w:'Wrong side. A mirror catches this before anyone moves.'},
+     {x:'Rotate right, then push the long corridor!',q:0,w:'"Hold" became "push", and there was no check.'},
+     {x:'Yep, got it.',q:0,w:'No mirror, so nobody knows what you heard.'}]},
+   {call:'Two on B, one on A. Save your shield for the retake.',ping:'Your phone buzzes on the desk.',o:[
+     {x:'So two on B, one on A, and I save my shield for the retake? Is that right?',q:2},
+     {x:'So two on A, one on B, and shield now? Is that right?',q:0,w:'The numbers flipped. Distractions make the gaps bigger.'},
+     {x:"So they're all on B? Is that right?",q:0,w:'You filled in the gap with a guess. Good that you checked, though.',},
+     {x:'Okay, using my shield now!',q:0,w:'You acted on half the call.'}]},
+   {call:"Don't chase. Fall back to spawn and wait for Mako.",ping:"Jules: I can chase, they're weak!",o:[
+     {x:"So no chasing, fall back to spawn and wait for Mako? Is that right?",q:2},
+     {x:'So chase with Jules, then wait for Mako?',q:0,w:'Jules was louder, so his idea got in. That is the assumption barrier.'},
+     {x:'So fall back and wait for Jules? Is that right?',q:0,w:'Right action, wrong person. The check would let Theo fix it.'},
+     {x:'Got it.',q:0,w:'No mirror, so nobody can tell if you heard it right.'}]}
+  ]};
+const GAME_STORY={id:'story',skill:'story',time:0,title:'Story Shaping',
+  sit:'Practise the story of the semi-final for next week\'s stream interview. Pick one line for each step so someone who was not there can picture it.',
+  slots:[
+   {k:'S',n:'Someone',h:'Who is it about?',o:[
+     {x:'Our team, the Bayside Comets, in our first ever semi-final.',q:2,w:'A clear main character the audience can follow.'},
+     {x:'Me, because I was easily the best player out there.',q:0,w:'It turns the team story into a brag.'},
+     {x:'Ridgeline.',q:1,w:'They are part of it, but it is your team\'s story to tell.'}]},
+   {k:'W',n:'Want',h:'What did they want?',o:[
+     {x:"We wanted to take middle early, like we'd practised all week.",q:2,w:'Specific, and it links back to the training.'},
+     {x:'We wanted to win.',q:1,w:'True, but everyone wants that. It gives the listener nothing to picture.'},
+     {x:'Jules wanted to be a hero, as usual.',q:0,w:'That is blame dressed up as a story.'}]},
+   {k:'O',n:'Obstacle',h:'What got in the way?',o:[
+     {x:"Ridgeline stacked middle, we went in early, and Theo's call got lost in the noise.",q:2,w:'Specific, fair to everyone, and easy to picture.'},
+     {x:"Theo's call was late.",q:0,w:'It puts it all on one teammate, in public.'},
+     {x:'Stuff just went wrong.',q:0,w:'Vague. Nobody can learn from "stuff".'}]},
+   {k:'C',n:'Change',h:'What changed?',o:[
+     {x:'Now we mirror every call before we move, and this week we showed it.',q:2,w:'A real change you can point to. That is what makes a story stick.'},
+     {x:'We lost. Whatever.',q:0,w:'No change, no story.'},
+     {x:"We'll just try harder.",q:1,w:'Better than nothing, but "harder" is not a change anyone can see.'}]}
+  ]};
+const GAME_3P={id:'brief',skill:'calm',time:35,title:'Pre-game brief: 3P',
+  sit:'Two minutes before the grand final. The team is nervous and Mako cannot talk. Give a short brief: Purpose, Plan, Point.',
+  slots:[
+   {k:'P',n:'Purpose',h:'Why does this matter?',o:[
+     {x:"We've beaten this team before. Today is about playing the way we trained.",q:2,w:'Calm and sincere. It reminds people what they already do well.'},
+     {x:'If we lose this, the whole season was pointless.',q:0,w:'Pressure, not purpose. Nervous teams get tighter, not better.'},
+     {x:"It's a final, so, yeah.",q:0,w:'No reason to follow.'}]},
+   {k:'P',n:'Plan',h:'What do we do?',o:[
+     {x:'Take middle early, Theo calls rotates, we mirror every call.',q:2,w:'Short, clear jobs that the team has practised.'},
+     {x:'Just go hard and see.',q:0,w:'That is a mood, not a plan.'},
+     {x:"Everything we've practised all season, every single drill, plus watch their support, plus the timer...",q:1,w:'Right ideas, far too many. Nobody can hold all that in a final.'}]},
+   {k:'P',n:'Point',h:'One thing to remember',o:[
+     {x:'If it gets loud: one voice, mirror it, then move.',q:2,w:'One point, easy to remember under stress.'},
+     {x:"Don't mess up.",q:0,w:'Tells people what to fear, not what to do.'},
+     {x:'Remember the ten things on the whiteboard.',q:0,w:'Ten is not one. Limit it.'}]}
+  ]};
+const GAME_CALM={id:'calm',skill:'calm',time:28,title:'CALM reset',
+  sit:'Tactical pause, 30 seconds. Jules is yelling, Theo has gone silent, Mako cannot talk, and you can hear your own voice getting louder.',
+  slots:[
+   {k:'C',n:'Check',h:'Notice your own stress first',o:[
+     {x:'(Take one slow breath. Notice that your voice is loud too.)',q:2,w:'You cannot calm a team you are adding stress to.'},
+     {x:'(Go straight to telling everyone what they did wrong.)',q:0,w:'Skipping the check means your stress leads the call.'},
+     {x:'(Ignore how you feel and talk faster.)',q:0,w:'Faster is not calmer.'}]},
+   {k:'A',n:'Adjust',h:'Change your tone',o:[
+     {x:"Okay. We're fine. We're only two rounds behind.",q:2,w:'Slower and lower. People match the tone they hear.'},
+     {x:'EVERYONE CALM DOWN!',q:0,w:'Shouting "calm down" is never calm.'},
+     {x:'Ugh. Guys. Seriously.',q:0,w:'Frustration spreads just as fast as calm does.'}]},
+   {k:'L',n:'Limit',h:'One main point',o:[
+     {x:"One job this round: hold B together. That's it.",q:2,w:'One point. Everyone can hold it in their head.'},
+     {x:'Okay so B, but also watch A and mid and their shield and the timer...',q:0,w:'Too many words under stress means nobody hears any of them.'},
+     {x:'Hold B, and maybe also A.',q:1,w:'Close. "Maybe" makes people unsure.'}]},
+   {k:'M',n:'Make space',h:'Let others talk',o:[
+     {x:'Theo, what are you seeing?',q:2,w:'Asking brings in information you did not have.'},
+     {x:'Nobody talk except me.',q:0,w:'Control, not influence. You lose what your team knows.'},
+     {x:'Any questions? No? Good.',q:0,w:'That is not space. That is a closed door.'}]}
+  ]};
+
+/* ---------- recap cards ---------- */
+const CARDS={
+ pro:{tag:'Prologue',title:'The Message',cards:[
+   {c:'t',lbl:'Valor principle',h:'Game time is training time',p:'Play with purpose. Set a goal, Play, then Review what happened.',steps:[['S','Set <em>a goal before you play</em>'],['P','Play <em>with that goal in mind</em>'],['R','Review <em>what worked and what to change</em>']]}],
+   reflect:'When does gaming help you, and when does it get in the way of other things?'},
+ c1:{tag:'Chapter 1 · Weeks 1 and 2',title:'Clear Signal',cards:[
+   {c:'k',lbl:'Week 1 · Knowledge',h:'Clear Messaging and Awareness',p:'A message moves from a sender to a receiver. Clear communication happens when what you meant matches what they heard.'},
+   {c:'t',lbl:'Week 2 · Tool',h:'State, Describe, Verify',p:'Use it when timing and teamwork matter.',steps:[['S','State <em>what we are doing</em>'],['D','Describe <em>what each person does</em>'],['V','Verify <em>ask them to repeat it back</em>']]}],
+   reflect:'Think of a time a message got lost. What did they need to hear that was different?'},
+ c2:{tag:'Chapter 2 · Weeks 3 and 4',title:'Heard, Not Listened',cards:[
+   {c:'k',lbl:'Week 3 · Knowledge',h:'Listening and Perspective',p:'Hearing is sound reaching you. Listening is working out what it means. Watch for assumptions, distractions, filling in gaps and thinking ahead.'},
+   {c:'t',lbl:'Week 4 · Tool',h:'Listen, Mirror, Check',p:'Don\'t guess. Check. Mirroring is not agreeing.',steps:[['L','Listen <em>focus fully on the message</em>'],['M','Mirror <em>"So what I heard is..."</em>'],['C','Check <em>"Is that right?"</em>']]}],
+   reflect:'When do you stop listening properly? Which barrier gets you most?'},
+ c3:{tag:'Chapter 3 · Weeks 5 and 6',title:'The Story We Tell',cards:[
+   {c:'k',lbl:'Week 5 · Knowledge',h:'Storytelling: making it memorable',p:'A list of mistakes is hard to learn from. A story with a turning point sticks, and it moves the team on from blame.'},
+   {c:'t',lbl:'Week 6 · Tool',h:'Story Shaping',p:'Shape what happened so someone who was not there can follow it.',steps:[['S','Someone <em>who it is about</em>'],['W','Want <em>what they wanted</em>'],['O','Obstacle <em>what got in the way</em>'],['C','Change <em>what changed</em>']]}],
+   reflect:'Think of a game you lost. Tell it as a story with Someone, Want, Obstacle and Change.'},
+ c4:{tag:'Chapter 4 · Weeks 7 and 8',title:'Calm Under Pressure',cards:[
+   {c:'k',lbl:'Week 7 · Knowledge',h:'Influencing with good communication',p:'People follow calm, clear and sincere words. A short brief with a Purpose, a Plan and one Point helps a group act.'},
+   {c:'t',lbl:'Week 8 · Tool',h:'CALM for Influence',p:'Use it when things get tense.',steps:[['C','Check <em>your own stress first</em>'],['A','Adjust <em>your tone</em>'],['L','Limit <em>to one main point</em>'],['M','Make space <em>for others to talk</em>']]}],
+   reflect:'When have your words helped a group calm down or focus?'}
+};
+
+/* ---------- the story ---------- */
+const CHAPTERS=[
+/* PROLOGUE */
+{key:'pro',ch:'Prologue',name:'The Message',tags:[],blurb:'A message from a coach at midnight.',nodes:[
+ SC('Your bedroom · Thursday, 11:48 pm','chat'),
+ N('You have just finished your fourth ranked match of the night in Arclight, a 4v4 objective game. Your phone buzzes.'),
+ L('coach','Hi {name}. I\'m Priya Raman, head coach at Bayside Comets Academy.'),
+ L('coach','I\'ve watched a few of your matches. Your aim is sharp, but that\'s not what caught my eye.'),
+ L('coach','Round 9 last night. You told three strangers exactly where to stand and when to move, and they did it. That\'s rare.'),
+ L('coach','We have one academy trial spot. Saturday, 10 am, at the Comets base. Interested?'),
+ TUT('This is a choice. Pick how you reply. People will remember what you say.'),
+ C(0,'Reply to Coach Raman',[
+  O("Yes! I'd love to. What should I bring?",{coach:1,clear:1},[L('coach',"Your headset, your settings written down, and a good night's sleep. Which reminds me, it's nearly midnight.")]),
+  O('Sorry, who is this? How did you find my profile?',{coach:1,respect:1},[L('coach','Good question to ask. I messaged through the State Youth League scouting page. Check my name on the Comets website before you reply.'),YOU('Okay, found you. Yes, I\'m in!')]),
+  O('lol sure. I carry every lobby anyway.',{coach:-1,respect:-1},[L('coach',"Confidence is good. Let's see how you go in a team that talks back.")],'coach')
+ ]),
+ L('dee','are you STILL up'),
+ L('dee','maths test tomorrow. you said you\'d go through the practice sheet with me'),
+ TUT('Some choices are timed. When the bar runs out, you say nothing. People notice silence too.'),
+ C(10,'Reply to Dee',[
+  O("Dee!! I just got scouted. Going to sleep now so I'm not useless tomorrow. Practice sheet at lunch?",{dee:1,purpose:1},[L('dee','WHAT. ok lunch. you\'re telling me everything')]),
+  O("One more game, then I'll do the sheet.",{purpose:-1},[L('dee','you said that three games ago')]),
+  O("Can't talk, big news, tell you tomorrow",{},[L('dee','ok mysterious. night')])
+ ],O('(Leave it on read)',{dee:-1},[N('The message sits there. Read, 11:52 pm.')],'dee')),
+ N('You put the phone face down. Saturday is two days away.'),
+ {t:'end'}
+]},
+
+/* CHAPTER 1 */
+{key:'c1',ch:'Chapter 1',name:'Clear Signal',tags:[['k','Wk 1'],['t','Wk 2']],blurb:'Trial day. A plan that nobody actually heard.',nodes:[
+ SC('Comets base · Saturday, 10:02 am','room'),
+ N('The Comets base is an old shopfront on the main street. Five desks, a whiteboard, and a sign above the door: Positive. Purposeful. Respectful.'),
+ L('coach','Everyone, this is {name}, trialling with us today.'),
+ L('coach','Mako is our captain and shot caller. Jules plays entry. Theo plays support. Sam is our analyst and will review the scrim with us after.'),
+ L('mako','Welcome. Grab the end desk.'),
+ L('theo','Hey.'),
+ N('Theo goes back to adjusting his headset.'),
+ L('jules','So you\'re the one taking someone\'s spot?'),
+ C(8,'Answer Jules',[
+  O("I'm here to earn a spot, not take one. Keen to see how you all play.",{jules:1,mako:1,respect:1},[L('jules','Okay. Fair answer.'),N('Mako gives you a small nod.')]),
+  O("Guess we'll find out.",{jules:1},[L('jules','Ha. Okay. I like that.')]),
+  O("If someone loses their spot, that's on them.",{jules:-2,mako:-1,respect:-1},[L('jules','Wow. Okay.'),L('mako','Let\'s keep it friendly, yeah?')],'jules')
+ ],O('(Say nothing)',{theo:1},[N('You let it go. Across the room, Theo almost smiles. He doesn\'t talk much either.'),L('jules','Strong silent type. Cool.')])),
+ SC('Scrim vs Northgate · Dockside · Round 1','voice'),
+ L('mako','Okay team, Dockside. We\'re going middle objective early this round, so Jules and...'),
+ L('jules','THEY\'RE PEEKING LEFT. LEFT LEFT LEFT.'),
+ L('mako','...hold left, and we go on...'),
+ L('jules','GO GO GO'),
+ N('Three of you move. Theo stays at spawn, unsure. You are halfway to middle.'),
+ L('theo','Wait, where are we going?'),
+ C(5,'Theo is lost',[
+  O('Middle! Now!',{},[N('Theo runs, but to the wrong middle. Dockside has two.')]),
+  O("Theo, middle objective. I'm on your left, come to me.",{clear:1,theo:1},[N('Theo finds you. Too late for the objective, but you are together.')]),
+  O('Keep up, Theo.',{theo:-1,positive:-1},[N('Theo goes quiet for the rest of the round.')],'theo')
+ ],O('(Say nothing)',{theo:-1},[N('Nobody answers him. Theo wanders off to the left side on his own.')])),
+ N('Northgate take the middle objective. Round lost, 0 to 1.'),
+ SC('Tactical pause','room'),
+ L('coach','Tactical pause. Headsets off for a second.'),
+ L('coach','Think of a message as three parts. A sender with an idea. The message itself, the words and the tone. And a receiver who takes it in.'),
+ L('coach','Mako had a plan. What did Theo actually hear?'),
+ C(0,'What went wrong?',[
+  O('Jules was yelling over Mako, so nobody heard the plan.',{jules:-1},[L('jules','Hey, they were peeking left!'),L('coach','That\'s part of it. But blame doesn\'t fix the next round. What would?'),YOU('...The plan only got said once, and nobody checked we all heard it.')]),
+  O("The plan got said once, half of it got drowned out, and nobody checked we'd all heard it.",{clear:1,coach:1},[L('coach','Exactly. What Mako meant and what Theo heard didn\'t match. That gap is where rounds go.')],'coach'),
+  O("Theo just wasn't paying attention.",{theo:-1},[L('coach','Was he? Or was the signal unclear?'),L('theo','...I couldn\'t hear Mako.')],'theo')
+ ]),
+ L('coach','Here\'s a tool for when accuracy matters. State, Describe, Verify.'),
+ L('coach','State what we\'re doing. Describe what each person does. Then Verify. Don\'t ask "do you get it?" because everyone just says yes. Ask someone to repeat it back, and listen to the answer.'),
+ L('mako','{name}, you call round two. Let\'s see it.'),
+ SC('Scrim vs Northgate · Dockside · Round 2','voice'),
+ G('build',{data:GAME_SDV,say:true}),
+ DYN(s=>{const g=s.g.sdv||0;
+  if(g>=.8) return [L('theo','Backing you up, moving on 1:30.'),N('At 1:30 all four of you move together. The objective is yours before Northgate arrive.'),N('Round won. 1 to 1.'),FX({mako:1})];
+  if(g>=.5) return [L('theo','Uh, with you, I think?'),N('Most of the team moves on time. Jules is a few seconds late, but you take the objective, just.'),N('Round won. 1 to 1.')];
+  return [L('theo','Yep.'),N('Theo said yes, then headed the wrong way. Saying yes is not the same as understanding.'),N('Round lost. 0 to 2.')];}),
+ N('The scrim goes on. Your calls get tighter as the rounds go. Northgate take the map 13 to 11, but it is close.'),
+ SC('Post-game · All chat','chat'),
+ L('opp','ez. academy kids lol'),
+ L('jules','Oh, I\'m typing something back.'),
+ C(7,'Jules is about to reply',[
+  O('Leave it, Jules. Type gg and we move on.',{positive:1,mako:1},[L('jules','Fine. gg.'),N('Mako gives you a quiet thumbs up.')]),
+  O('Do it. They deserve it.',{positive:-2,coach:-1},[N('Jules sends it. Coach Raman reads it over his shoulder and sighs.'),L('coach','That\'s not who we are. We\'ll talk about it later.')],'coach'),
+  O("Type gg. Then let's look at the rounds where our calls worked.",{positive:1,purpose:1,coach:1,jules:1},[L('jules','...yeah, okay. gg.'),L('coach','That\'s the attitude.')])
+ ],O('(Say nothing)',{positive:-1},[N('Jules sends something rude. The chat lights up. Nobody feels any better.')])),
+ SC('Comets base · After the scrim','room'),
+ L('coach','{name}. A word?'),
+ DYN(s=>[L('coach',s.v.clear>=3?'You made your calls clear, and you checked they landed. That\'s the part I can\'t teach in one day.':'Your calls got better as the day went on. That\'s what I wanted to see.')]),
+ L('coach','We\'d like you back. Training is Tuesday and Thursday nights, plus Saturday scrims. And school comes first. That\'s a team rule.'),
+ N('You are in the academy.'),
+ {t:'end'}
+]},
+
+/* CHAPTER 2 */
+{key:'c2',ch:'Chapter 2',name:'Heard, Not Listened',tags:[['k','Wk 3'],['t','Wk 4']],blurb:'Theo is calling tonight. Is anyone listening?',nodes:[
+ SC('The bus home · Tuesday, 3:40 pm','chat'),
+ N('You are watching a pro match clip with one earbud in. Dee messages.'),
+ L('dee','ok so about the grand final'),
+ L('dee','mum says I can come IF it\'s on the 14th, but I have to be home before 6 for my sister\'s recital'),
+ L('dee','and she can\'t drive me so I need a lift both ways'),
+ N('The clip hits the best play of the match just as Dee\'s last message arrives.'),
+ C(10,'Reply to Dee',[
+  O('Yes!! See you there!',{listen:-1},[L('dee','...did you read the bit about the lift?'),N('You didn\'t. Your brain filled in the gap with what it wanted to hear.')]),
+  O("So you can come on the 14th if you're home before 6, and you need a lift both ways? I'll ask Dad if we can drive you.",{listen:2,dee:2},[L('dee','YES. that\'s exactly it. thank you')],'dee'),
+  O('Sorry, I was watching a clip. What did you say?',{listen:1},[L('dee','lol. scroll up. 14th, home before 6, need a lift'),N('Not perfect, but asking beat guessing.')])
+ ],O('(Send a thumbs up)',{listen:-1,dee:-1},[L('dee','a thumbs up. ok.')],'dee')),
+ SC('Comets base · Thursday training','room'),
+ N('Mako has a sore throat and is joining from home.'),
+ L('mako','Theo\'s calling tonight. Give him room, yeah?'),
+ L('jules','Theo? He talks like he\'s in a library.'),
+ C(7,'Jules has a go at Theo',[
+  O('His calls are good. We just have to actually listen.',{theo:1,respect:1},[L('theo','...thanks.')]),
+  O('Ha, true.',{theo:-1,jules:1,respect:-1},[N('Theo pulls his headset on and looks at his screen.')],'theo'),
+  O("Then let's all turn our game sound down a bit.",{listen:1,theo:1},[L('jules','Fine, fine.')])
+ ],O('(Say nothing)',{},[N('The moment passes. Theo doesn\'t look up.')])),
+ SC('Training scrim · Glasshouse · Round 6','voice'),
+ N('Theo\'s voice comes through, quiet and steady.'),
+ L('theo','They\'re stacking B. Hold, don\'t push. Wait for my call.'),
+ L('jules','Pushing B? Okay, going!'),
+ N('Jules is already moving. You heard something about B. But was it push, or hold?'),
+ C(5,'Quick',[
+  O('Jules, wait. Theo, say again?',{listen:1,theo:1},[L('theo','Hold. Don\'t push. Hold.'),N('Jules stops at the corner just in time. The other team walks into your crossfire. Round won.'),FLAG('heldB')]),
+  O('Pushing with you, Jules!',{listen:-1},[N('You and Jules run straight into four players waiting at B. Round lost.')]),
+  O('Follow Jules, he usually knows.',{listen:-1,theo:-1},[N('You follow Jules into a full stack at B. Round lost.')])
+ ],O('(Freeze)',{},[N('You freeze. Jules goes in alone and is eliminated. Round lost.')])),
+ SC('Tactical pause','room'),
+ L('coach','Pause. Jules, what did Theo say?'),
+ L('jules','Push B.'),
+ L('theo','I said hold.'),
+ L('coach','Hearing is sound reaching you. Listening is working out what it means. Your brain loves to guess, so it hears what it expects.'),
+ L('coach','{name}, which barrier got us there?'),
+ C(0,'Which barrier?',[
+  O('Assumptions. Jules decided what Theo meant before he finished.',{listen:1},[L('coach','Yes. He\'d made up his mind before Theo got to "hold".')]),
+  O('Distractions. Game sound, and everyone talking at once.',{listen:1},[L('coach','A big one. Noise makes the gaps bigger.')]),
+  O('Filling in gaps. He heard "B" and guessed the rest.',{listen:1},[L('coach','Right. "B" plus a guess equals "push".')]),
+  O('Thinking ahead. He was planning his play instead of listening.',{listen:1},[L('coach','Could be. When you\'re planning your reply, you\'ve stopped listening.')])
+ ]),
+ L('coach','Honestly, it\'s usually a mix. So here\'s the fix. Listen, Mirror, Check.'),
+ L('coach','Listen fully. Mirror it back: "So what I heard is..." Then Check: "Is that right?"'),
+ L('coach','Mirroring isn\'t agreeing. It just shows you understood. And if the answer is no, you listen and adjust.'),
+ L('theo','Can we try it? I\'ll make the calls.'),
+ SC('Training scrim · Glasshouse · Drill','voice'),
+ G('mirror',{data:GAME_MIRROR}),
+ DYN(s=>{const g=s.g.mirror||0;
+  return g>=.6?[N('By the end of the night, Jules is mirroring calls without being asked. Theo\'s voice is getting louder, and steadier.'),FX({theo:1})]
+   :[N('It feels clunky. Accuracy always feels slower at the start. But the team is talking to each other now, not over each other.')];}),
+ SC('Your phone · 9:47 pm','chat'),
+ L('theo','hey. thanks for listening tonight'),
+ L('theo','most people talk over me'),
+ C(10,'Reply to Theo',[
+  O("Your calls were good. Keep making them. I'll back you.",{theo:2,positive:1},[L('theo','ok. I will.')],'theo'),
+  O('No worries. See you Saturday.',{theo:1},[L('theo','see you')]),
+  O('Maybe just talk louder lol',{theo:-1},[L('theo','yeah. maybe.')])
+ ],O('(Leave it on read)',{theo:-1},[N('Theo goes offline a minute later.')],'theo')),
+ N('Another message arrives. Unknown sender.'),
+ L('ryder','Hey {name}. Ryder, team manager at Blaze Syndicate. Saw your clips from the Comets scrims.'),
+ L('ryder','We pay our players. No curfews, no school rules, no "review sessions". Just play. Interested?'),
+ C(10,'Reply to Ryder',[
+  O("Thanks, but I'm focused on the Comets right now.",{purpose:1},[L('ryder','Respect. Offer\'s open till your grand final.')]),
+  O('Maybe. Tell me more.',{},[FLAG('ryder'),L('ryder','Let\'s talk after your final. Don\'t mention it to your coach yet, yeah?'),N('Something about that last line sits funny.')])
+ ],O('(Leave it on read)',{},[L('ryder','No rush. Offer\'s open till your grand final.')])),
+ {t:'end'}
+]},
+
+/* CHAPTER 3 */
+{key:'c3',ch:'Chapter 3',name:'The Story We Tell',tags:[['k','Wk 5'],['t','Wk 6']],blurb:'A semi-final loss, and how the team talks about it.',nodes:[
+ SC('Upper semi-final vs Ridgeline · Dockside · Map 3','voice'),
+ N('Last round. Comets 11, Ridgeline 12. Ridgeline take the final objective.'),
+ N('Match over. The Comets drop to the lower bracket.'),
+ L('jules','That\'s on me. I pushed too early. No, actually, Theo, your call was late. If you\'d called it earlier...'),
+ L('theo','...'),
+ C(7,'The blame is starting',[
+  O("It wasn't all you, Jules, and it wasn't Theo. We all missed the rotate. We fix it together.",{jules:1,theo:1,positive:1},[L('jules','...yeah. Okay.')],'jules'),
+  O("Stop. Blaming won't win the next match.",{positive:1},[L('jules','Fine.'),N('It works, but it lands a bit sharp. Jules goes quiet.')]),
+  O('Yeah, Theo was late.',{theo:-2,positive:-1},[N('Theo takes his headset off and doesn\'t put it back on.')],'theo')
+ ],O('(Say nothing)',{theo:-1,positive:-1},[N('Nobody says anything. Jules keeps going. Theo just stares at his screen.')])),
+ SC('Comets base · Sunday review','room'),
+ L('sam','Okay. Set, Play, Review. We Set a goal for that map: take middle early. We Played. Now we Review. One round, properly.'),
+ L('sam','Which round do we look at?'),
+ C(0,'Pick a round to review',[
+  O("Round 22. That's where we lost the lead and the plan fell apart.",{purpose:2,coach:1},[L('sam','Good pick. That\'s the round that teaches us the most.')],'coach'),
+  O('Round 15, my triple. That clip is so good.',{purpose:-1},[L('sam','It is a great clip. But what does it teach us for next week?'),YOU('...Okay. Round 22.')]),
+  O('Can we skip review and just play more matches?',{purpose:-2,coach:-1},[L('coach','More matches without review is just practising the same mistakes. Game time is training time.'),YOU('Fair. Round 22, then.')],'coach')
+ ]),
+ L('sam','Round 22. We go in early, Theo\'s call comes after the fight has already started, and we never regroup.'),
+ L('coach','Notice how we talk about it, though. A list of mistakes is hard to learn from. A story sticks.'),
+ L('coach','Someone, Want, Obstacle, Change. Who it\'s about, what they wanted, what got in the way, and what changed.'),
+ L('coach','The league wants one player for the stream interview after the lower bracket final next Saturday. I\'d like it to be you. Shape the story now, so it\'s ready.'),
+ G('build',{data:GAME_STORY}),
+ SC('Your phone · Monday, 4:15 pm','chat'),
+ L('dee','exam week is next week btw'),
+ L('dee','study group thursday at the library? you said you\'d come'),
+ N('Thursday is a training night. You also wanted to grind ranked every night before the final.'),
+ C(10,'Reply to Dee',[
+  O("Yes. I'll ask Coach to swap Thursday training for Wednesday. Training Mon, Wed, Sat. Study Thursday.",{purpose:2,dee:1,coach:1},[L('dee','look at you with an actual plan')],'dee'),
+  O("Can't. Ranked every night until the final.",{purpose:-2,dee:-1},[L('dee','ok. good luck with the exam I guess')],'dee'),
+  O("Maybe? I'll see how I feel.",{},[L('dee','that\'s a no then')])
+ ],O('(Leave it on read)',{dee:-1},[N('Dee goes offline.')])),
+ SC('Lower bracket final vs Ridgeline','voice'),
+ N('Saturday. Ridgeline again. This time the rotate holds, every call gets mirrored, and the Comets win 2 maps to 1.'),
+ L('mako','WE\'RE IN THE GRAND FINAL!'),
+ SC('Stream desk · Post-match interview','room'),
+ L('host','Congratulations! Last week this same team beat you. What changed?'),
+ DYN(s=>{const p=s.picks.story||[];const g=s.g.story||0;
+  const out=[YOU(p.join(' '))];
+  if(g>=.75) out.push(L('host','That\'s a great story. People at home can picture exactly what happened.'),FX({story:1,coach:1}));
+  else if(g>=.5) out.push(L('host','Ha, okay! Sounds like you learned a lot.'));
+  else out.push(N('The host waits for more. The chat on stream scrolls past: "what did they even say?"'));
+  return out;}),
+ L('host','And what do you think of Ridgeline?'),
+ C(8,'Answer on stream',[
+  O("They're a great team. They beat us fair last week, and they made us better.",{respect:2,positive:1},[L('host','Classy. Love it.')]),
+  O('They talk a lot for a team that just lost.',{respect:-2,coach:-1},[N('The stream chat goes wild. Coach Raman does not look happy.')],'coach'),
+  O('Honestly, I just focus on our team.',{respect:1},[L('host','Fair enough!')])
+ ],O('(Say nothing)',{},[L('host','Lost for words! Big day.')])),
+ {t:'end'}
+]},
+
+/* CHAPTER 4 */
+{key:'c4',ch:'Chapter 4',name:'Calm Under Pressure',tags:[['k','Wk 7'],['t','Wk 8']],blurb:'Grand final. Mako has lost his voice. You are calling.',nodes:[
+ SC('Comets base · Grand final morning','room'),
+ N('Grand final day. Mako walks in wearing a scarf and holding a whiteboard marker.'),
+ N('He writes on the whiteboard: VOICE GONE. FLU. SORRY.'),
+ L('coach','Mako can play, but he can\'t call. I want you to be shot caller today, {name}.'),
+ DYN(s=>[s.v.jules<0?L('jules','Them? Seriously?'):L('jules','Let\'s go. You\'ve got this.')]),
+ DYN(s=>s.v.theo>=3?[L('theo','I\'ll feed you info. Whatever you need.')]:[N('Theo nods, but doesn\'t say anything.')]),
+ L('coach','Good leaders don\'t shout louder. They help the team focus. People follow calm, clear, sincere words.'),
+ L('coach','Before we start, give the team a brief. Three P\'s. Purpose, Plan, Point.'),
+ G('build',{data:GAME_3P,say:true}),
+ DYN(s=>{const g=s.g.brief||0;
+  return g>=.8?[N('Shoulders drop. Jules stops bouncing his knee. Mako gives you two thumbs up.'),FX({mako:1,jules:1})]
+   :g>=.5?[N('The team nods. Not everyone looks settled, but they know the plan.')]
+   :[L('jules','So... what are we actually doing?'),N('The brief made people more nervous, not less.')];}),
+ SC('Your phone · 15 minutes to match','chat'),
+ L('ryder','Big day! Quick one. My offer ends tonight. I need an answer before your match.'),
+ C(8,'Ryder wants an answer now',[
+  O("I'm not thinking about that right now. After the match.",{purpose:1,calm:1},[N('You put your phone in your bag.')]),
+  O("Okay, quick. What's the offer?",{purpose:-1,calm:-1},[L('ryder','Three times what the Comets will ever pay. Your own stream deal. Practice when you want, no coach telling you to sleep...'),N('By the time you finish reading, the match is about to start and your head is somewhere else.')])
+ ],O('(Put the phone away)',{},[N('You flip the phone over. Later.')])),
+ SC('Grand final vs Ridgeline · Glasshouse · Map 3','voice'),
+ N('One map each. Map 3 decides it. Ridgeline lead 11 to 9 and have won three rounds in a row.'),
+ L('jules','WHY IS NOBODY ON B?? I\'M ALONE AGAIN!'),
+ N('Mako taps his desk hard. He can\'t speak.'),
+ L('jules','THIS IS HOPELESS.'),
+ N('You can hear your own voice getting louder. Everyone is talking. Nobody is listening.'),
+ N('Coach Raman calls a tactical pause. Thirty seconds.'),
+ G('build',{data:GAME_CALM,say:true}),
+ DYN(s=>{const g=s.g.calm||0;
+  if(g<.5) return [N('The pause ends with more noise than it started with. Jules is still yelling.')];
+  if(s.v.theo>=2||s.f.heldB) return [L('theo','{name}. When they\'re ahead, they leave A empty and stack B. Every time.'),FLAG('aInfo')];
+  return [L('theo','I... nothing. Sorry.'),N('Theo looks like he wants to say something. Maybe he doesn\'t trust that anyone will listen.')];}),
+ IF(s=>s.f.aInfo,[
+  C(6,'Theo just gave you something',[
+   O('So when they\'re ahead, A is empty and they stack B? Is that right?',{listen:1,theo:1},[L('theo','That\'s right.'),YOU('Our goal: take A. Jules and I go first, Theo and Mako follow on my call. Theo, repeat it back?'),L('theo','A. You and Jules first, me and Mako on your call.'),FLAG('aCall')]),
+   O('Not now, Theo. Just hold B.',{theo:-1},[N('Theo goes quiet again.')],'theo')
+  ],O('(Say nothing)',{},[N('The pause ends before you answer.')]))
+ ]),
+ DYN(s=>{
+  const sc=((s.g.brief||0)+(s.g.calm||0))/2+(s.f.aCall?.35:0)+(s.v.calm>=4?.05:0);
+  s.f.won=sc>=.85?1:0;
+  if(s.f.won) return [
+   N(s.f.aCall?'Round 21. You take A while Ridgeline stack B. They don\'t see it coming.':'Round 21. The team holds B together, one voice at a time.'),
+   N('Round 22. Round 23. Calm calls, mirrored back, every time.'),
+   N('13 to 11. The Bayside Comets win the State Youth League grand final.'),
+   L('jules','NO WAY. NO WAY!'),N('Mako can\'t shout, so he just grabs your shoulder and shakes it.')];
+  return [
+   N('The team settles. Round 21 is yours. Round 22 too.'),
+   N('But Ridgeline adjust. Round 24 goes to them.'),
+   N('13 to 11, Ridgeline. The Comets lose the grand final by two rounds.'),
+   N('Nobody yells. Jules takes a long breath. Theo pats your desk.')];}),
+ SC('Post-match · All chat','chat'),
+ DYN(s=>[L('rid',s.f.won?'gg Comets. That was the best final we\'ve ever played.':'gg Comets. That was the toughest final we\'ve ever played.')]),
+ C(8,'Reply in all chat',[
+  O('gg Ridgeline. That was awesome. See you next season.',{positive:1,respect:1},[N('Ridgeline\'s captain sends a heart. A few people in the stream chat copy it.')]),
+  O(s=>s.f.won?'Told you we\'d get you.':'Whatever. Lucky.',{positive:-1,respect:-1},[N('The stream chat turns on you. Coach Raman reads it, and says nothing, which is worse.')],'coach'),
+ ],O('(Type gg)',{positive:1},[N('Simple. Respectful. Done.')])),
+ SC('Comets base · That night','room'),
+ DYN(s=>{const out=[];
+  const strong=s.v.coach>=2&&(s.v.clear+s.v.listen+s.v.story+s.v.calm)>=10;
+  s.f.offer=strong?'main':'academy';
+  out.push(L('coach',s.f.won?'Champions. I\'m still a bit stunned.':'Second in the state, in your first season. I\'m proud of all of you.'));
+  if(strong) out.push(L('coach','{name}, I want you on the main roster next season. As a shot caller. Not because of your aim. Because people listen when you talk, and you listen back.'));
+  else out.push(L('coach','{name}, I\'d like you back in the academy next season, as deputy caller next to Mako. You\'ve grown a lot. Let\'s keep building it.'));
+  return out;}),
+ N('Your phone buzzes. Ryder.'),
+ L('ryder','So? Blaze Syndicate. Last chance. Big money, no rules.'),
+ C(0,'Choose your next step',[
+  O(s=>s.f.offer==='main'?'Take the main roster spot with the Comets.':'Stay with the Comets and keep building.',{},[FLAG('stay'),L('ryder','Your call. Good luck.')]),
+  O('Tell Coach Raman about the offer, honestly, then decide with the team.',{respect:1,coach:1},[FLAG('stay'),FLAG('honest'),L('coach','Thanks for telling me. That tells me more about you than any match did.'),L('coach','The door\'s open, here, whatever you pick. But I\'d love you to stay.'),YOU('I\'m staying.')],'coach'),
+  O('Sign with Blaze Syndicate.',{},[FLAG('blaze'),L('ryder','Knew it. Welcome to the big time.')])
+ ]),
+ {t:'final'}
+]}
+];
+
+/* ---------- DOM ---------- */
+const $=id=>document.getElementById(id);
+const el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;};
+const logIn=$('logIn'),logBox=$('log'),panel=$('panel');
+let curMode='room';
+function scrollDown(){requestAnimationFrame(()=>{logBox.scrollTop=logBox.scrollHeight;});}
+function avatar(k,cls){const a=el('div',cls||'av',CAST[k].i);a.style.background=CAST[k].c;return a;}
+function addLine(n){
+  const x=nm(n.x);
+  if(n.s==='sys'){const d=el('div','ln sys'+(n.tut?' tut':''),x);logIn.append(d);}
+  else if(n.s==='you'){const d=el('div','ln you'+(n.silent?' silent':''));d.append(el('div','tx',x));logIn.append(d);}
+  else{const c=CAST[n.s];const d=el('div','ln '+curMode);d.append(avatar(n.s));
+    const b=el('div');b.style.minWidth='0';b.style.display='grid';b.style.gap='2px';
+    const w=el('div','who');w.style.color=c.c;w.append(document.createTextNode(c.n));w.append(el('small',null,c.r));
+    b.append(w,el('div','tx',x));d.append(b);logIn.append(d);}
+  scrollDown();
+}
+function setScene(n){
+  curMode=n.mode;const m=$('hudMode');m.className='mode '+n.mode;
+  m.textContent=n.mode==='voice'?'Voice comms':n.mode==='chat'?'Messages':'In person';
+  $('hudPlace').textContent=nm(n.place);
+  if(logIn.children.length){logIn.append(el('div','scene-break',nm(n.place)));scrollDown();}
+}
+function setHud(chap){
+  $('hudCh').textContent=chap.ch+' · '+chap.name;
+  const t=$('hudTags');t.replaceChildren();chap.tags.forEach(([c,l])=>t.append(el('span','tag '+c,l+(c==='k'?' Knowledge':' Tool'))));
+}
+function toast(k,msg){const t=el('div','toast');t.style.borderLeftColor=CAST[k]?CAST[k].c:'var(--violet)';if(CAST[k])t.append(avatar(k,'av'));t.append(el('span',null,msg));
+  const tb=$('toasts');while(tb.children.length>=3)tb.firstChild.remove();tb.append(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),450);},3200);}
+
+/* ---------- runner ---------- */
+let Q=[],keyHandler=null,timerId=null;
+function clearPanel(){panel.replaceChildren();keyHandler=null;if(timerId){cancelAnimationFrame(timerId);timerId=null;}}
+function step(){
+  clearPanel();
+  if(!Q.length)return;
+  const n=Q.shift();
+  if(n.t==='scene'){setScene(n);return step();}
+  if(n.s){addLine(n);return waitTap();}
+  if(n.t==='choice')return showChoice(n);
+  if(n.t==='if'){Q.unshift(...((n.c(S)?n.y:n.n)||[]));return step();}
+  if(n.t==='dyn'){Q.unshift(...(n.f(S)||[]));return step();}
+  if(n.t==='fx'){applyFx(n.fx,true);return step();}
+  if(n.t==='do'){n.f(S);return step();}
+  if(n.t==='game')return (n.kind==='mirror'?gameMirror:gameBuild)(n);
+  if(n.t==='end')return showRecap();
+  if(n.t==='final')return showFinal();
+}
+function waitTap(){
+  const b=el('button','cont','Continue  ▸   (space)');b.type='button';b.onclick=()=>step();panel.append(b);
+  keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();step();}};
+  b.focus({preventScroll:true});
+}
+function applyFx(fx,quiet){
+  for(const k in fx){S.v[k]=(S.v[k]||0)+fx[k];}
+  if(!quiet)return;
+  const ups=Object.entries(fx).filter(([k,v])=>RELS.includes(k)&&v>0);
+  ups.forEach(([k])=>toast(k,CAST[k].n+' liked that.'));
+}
+function startTimer(sec,onDone){
+  const bar=el('div','timer');const i=el('i');bar.append(i);
+  const total=sec*tmul()*1000;const t0=performance.now();
+  const tick=now=>{const f=Math.max(0,1-(now-t0)/total);i.style.transform='scaleX('+f+')';bar.classList.toggle('low',f<.3);
+    if(f<=0){timerId=null;onDone();return;} timerId=requestAnimationFrame(tick);};
+  timerId=requestAnimationFrame(tick);return bar;
+}
+function showChoice(n){
+  const timed=n.time>0&&timersOn();
+  const head=el('div','gm-head');head.append(el('div','q',nm(n.q)));
+  if(n.time>0) head.append(el('span','score',timed?'Timed':'Timer off'));
+  panel.append(head);
+  const to=n.to||O('(Say nothing)',{});
+  let done=false;
+  const pick=(o,silent)=>{if(done)return;done=true;
+    const say=o.say?nm(o.say):nm(o.x);
+    addLine({s:'you',x:say,silent:silent||/^\(.*\)$/.test(say)});
+    applyFx(o.fx);
+    S.log.push({ch:S.ch,q:nm(n.q),a:say,fx:o.fx});
+    if(o.mem) toast(o.mem,CAST[o.mem].n+' will remember that.');
+    Q.unshift(...(o.then||[]));
+    step();
+  };
+  if(timed) panel.append(startTimer(n.time,()=>pick(to,true)));
+  const grid=el('div','opts');
+  n.o.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,nm(o.x)));b.onclick=()=>pick(o);grid.append(b);});
+  panel.append(grid);
+  keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=n.o.length){e.preventDefault();pick(n.o[k-1]);}};
+}
+document.addEventListener('keydown',e=>{if(!$('ov').hidden||!$('drawer').hidden)return;if(e.target.tagName==='INPUT')return;keyHandler&&keyHandler(e);});
+
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+
+/* builder minigame: SDV, Story, 3P, CALM */
+function gameBuild(n){
+  const d=n.data;const picks=[];let idx=0,finished=false;
+  const head=el('div','gm-head');head.append(el('div','gm-title',d.title));
+  const tl=el('span','score');head.append(tl);
+  panel.append(head,el('div','gm-sit',d.sit));
+  const slotBar=el('div','slots');d.slots.forEach(s=>slotBar.append(el('span','slot',s.k+' · '+s.n)));panel.append(slotBar);
+  const area=el('div');area.style.display='grid';area.style.gap='10px';panel.append(area);
+  if(d.time&&timersOn()){tl.textContent='Timed';panel.insertBefore(startTimer(d.time,()=>finish(true)),slotBar);}else tl.textContent='Take your time';
+  const render=()=>{
+    [...slotBar.children].forEach((c,i)=>c.className='slot'+(i<idx?' done':i===idx?' on':''));
+    area.replaceChildren();
+    const s=d.slots[idx];
+    const lab=el('div','slot-label');lab.append(el('span','big',s.k),el('span','nm',s.n),el('span','hint',s.h));area.append(lab);
+    const grid=el('div','opts');const opts=shuffle(s.o);
+    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,o.x));b.onclick=()=>choose(o);grid.append(b);});
+    area.append(grid);
+    keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();choose(opts[k-1]);}};
+  };
+  const choose=o=>{if(finished)return;picks.push(o);idx++;if(idx>=d.slots.length)finish(false);else render();};
+  const finish=timedOut=>{
+    if(finished)return;finished=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+    while(picks.length<d.slots.length)picks.push({x:'(Out of time)',q:0,w:'The clock ran out before you got here.'});
+    const pts=picks.reduce((a,p)=>a+p.q,0),max=d.slots.length*2,frac=pts/max;
+    S.g[d.id]=frac;S.picks[d.id]=picks.filter(p=>p.q>=0&&!/^\(Out/.test(p.x)).map(p=>p.x);
+    const gain=frac>=.85?3:frac>=.6?2:frac>=.35?1:0;S.v[d.skill]+=gain;
+    S.log.push({ch:S.ch,q:d.title,a:'Scored '+pts+' of '+max,fx:gain?{[d.skill]:gain}:{}});
+    if(n.say){const said=picks.filter(p=>!/^\(Out/.test(p.x)).map(p=>p.x).join(' ');if(said)addLine({s:'you',x:said});}
+    clearPanel();
+    const h=el('div','gm-head');h.append(el('div','gm-title',d.title+(timedOut?' · time ran out':'')));
+    const sc=el('span','score');sc.append(document.createTextNode('Score '),el('b',null,pts+' / '+max));h.append(sc);panel.append(h);
+    const fb=el('div','fb');
+    picks.forEach((p,i)=>{const r=el('div','fb-row');r.append(el('span','k',d.slots[i].k));const c=el('div');
+      const a=el('div');a.append(el('span','dot q'+p.q),document.createTextNode(p.x));c.append(a,el('div','w',p.w||''));r.append(c);fb.append(r);});
+    panel.append(fb);
+    if(gain)toast(null,'+'+gain+' '+SKILLS[d.skill]);
+    const b=el('button','cont','Continue  ▸');b.type='button';b.onclick=()=>step();panel.append(b);
+    keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();step();}};
+  };
+  render();
+}
+
+/* mirror minigame */
+function gameMirror(n){
+  const d=n.data;let r=0,score=0;
+  const runRound=()=>{
+    clearPanel();
+    const R=d.rounds[r];
+    const head=el('div','gm-head');head.append(el('div','gm-title',d.title+' · call '+(r+1)+' of '+d.rounds.length));
+    head.append(el('span','score','Correct '+score));panel.append(head);
+    if(r===0)panel.append(el('div','gm-sit',d.sit));
+    const card=el('div','callcard');card.textContent='Theo: "'+R.call+'"';panel.append(card);
+    const status=el('div','score','Listen...');panel.append(status);
+    const pingT=setTimeout(()=>{const p=el('div','ping',R.ping);card.append(p);},1300);
+    const showFor=d.show*1000*(SET.timer==='relaxed'?2:SET.timer==='off'?2.4:1);
+    setTimeout(()=>{clearTimeout(pingT);card.className='callcard gone';card.textContent='The call is gone. What did you hear?';status.textContent='Pick your mirror and check';ask(R);},showFor);
+  };
+  const ask=R=>{
+    let done=false;const opts=shuffle(R.o);
+    const grid=el('div','opts');
+    const answer=o=>{if(done)return;done=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+      [...grid.children].forEach((b,i)=>{b.disabled=true;const oo=opts[i];if(oo===o)b.classList.add('q'+(o?o.q:0));else if(oo.q===2)b.classList.add('q2');else b.classList.add('dim');});
+      if(o)addLine({s:'you',x:o.x});else addLine({s:'you',x:'(You missed it)',silent:true});
+      if(o&&o.q===2){score++;addLine({s:'theo',x:'Yes. Exactly.'});}
+      else{addLine({s:'theo',x:'No. I said: "'+R.call+'"'});if(o&&o.w)addLine({s:'sys',x:o.w});}
+      const b=el('button','cont',r<d.rounds.length-1?'Next call  ▸':'Finish drill  ▸');b.type='button';
+      b.onclick=()=>{r++;if(r<d.rounds.length)runRound();else end();};panel.append(b);
+      keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();b.click();}};
+    };
+    if(timersOn())panel.insertBefore(startTimer(d.time,()=>answer(null)),panel.lastChild);
+    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,o.x));b.onclick=()=>answer(o);grid.append(b);});
+    panel.append(grid);
+    keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();answer(opts[k-1]);}};
+  };
+  const end=()=>{
+    const frac=score/d.rounds.length;S.g[d.id]=frac;
+    const gain=score>=3?3:score===2?2:score===1?1:0;S.v[d.skill]+=gain;
+    S.log.push({ch:S.ch,q:d.title,a:'Mirrored '+score+' of '+d.rounds.length+' calls correctly',fx:gain?{[d.skill]:gain}:{}});
+    if(gain)toast(null,'+'+gain+' '+SKILLS[d.skill]);
+    step();
+  };
+  runRound();
+}
+
+/* ---------- chapter flow ---------- */
+function startChapter(i,fromSave){
+  S.ch=i;const chap=CHAPTERS[i];
+  store.set('scouted.save',{S,at:i});
+  logIn.replaceChildren();setHud(chap);
+  $('ov').hidden=true;
+  logIn.append(el('div','scene-break',chap.ch+' · '+chap.name));
+  Q=chap.nodes.slice();step();
+}
+function chipsFor(fx){const w=el('div','chips');Object.entries(fx||{}).forEach(([k,v])=>{if(!v)return;w.append(el('span','chip '+(v>0?'up':'dn'),(v>0?'+':'')+v+' '+LABEL(k)));});return w;}
+function cardEl(c){const d=el('div','tc '+c.c);d.append(el('div','lbl',c.lbl),el('h3',null,c.h),el('p',null,c.p));
+  if(c.steps){const s=el('div','steps');c.steps.forEach(([k,h])=>{const r=el('div');r.append(el('b',null,k));const sp=el('span');sp.innerHTML=h;r.append(sp);s.append(r);});d.append(s);}return d;}
+function showRecap(){
+  clearPanel();
+  const chap=CHAPTERS[S.ch],info=CARDS[chap.key];
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in');
+  w.append(el('div','brand',info.tag+' · complete'));
+  const h=el('h1','logo',info.title);h.style.fontSize='clamp(40px,9vw,76px)';w.append(h);
+  w.append(el('h2','sec-h','What you learned'));
+  const tcs=el('div','toolcards');info.cards.forEach(c=>tcs.append(cardEl(c)));w.append(tcs);
+  w.append(el('h2','sec-h','Your choices'));
+  const pk=el('div','picks');
+  S.log.filter(x=>x.ch===S.ch).forEach(x=>{const p=el('div','pick');p.append(el('div','score',x.q),el('div','a',x.a),chipsFor(x.fx));pk.append(p);});
+  w.append(pk);
+  const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'),el('p',null,info.reflect));w.append(rf);
+  const row=el('div','row');
+  const next=S.ch+1<CHAPTERS.length;
+  const b=el('button','btn',next?'Next: '+CHAPTERS[S.ch+1].ch:'Finish');b.type='button';
+  b.onclick=()=>{if(next)startChapter(S.ch+1);};
+  const t=el('button','btn ghost','See team');t.type='button';t.onclick=openDrawer;
+  row.append(b,t);w.append(row);
+  ov.append(w);ov.hidden=false;ov.scrollTop=0;b.focus({preventScroll:true});
+  store.set('scouted.save',{S,at:S.ch+1});
+}
+function relState(v){return v>=4?'Trusted':v>=2?'Friendly':v>=0?'Neutral':'Strained';}
+function relEl(k){const v=S.v[k];const r=el('div','rel');r.append(avatar(k));const b=el('div');b.append(el('div','nm',CAST[k].n),el('div','st',CAST[k].r+' · '+relState(v)));
+  const p=el('div','pips');for(let i=0;i<6;i++){const q=el('i');if(v>0&&i<v)q.className='on';if(v<0&&i<-v)q.className='neg';p.append(q);}b.append(p);r.append(b);return r;}
+function barEl(label,v,max,color){const b=el('div','bar');const t=el('div','top');t.append(el('span',null,label),el('span',null,Math.max(0,v)+' pts'));
+  const tr=el('div','tr');const i=el('i');i.style.width=Math.min(100,Math.max(0,v)/max*100)+'%';i.style.background=color;tr.append(i);b.append(t,tr);return b;}
+function openDrawer(){
+  const d=$('drawer');d.replaceChildren();
+  const h=el('div','gm-head');h.append(el('div','gm-title','Your team'));const x=el('button','hbtn','Close');x.type='button';x.onclick=()=>{d.hidden=true;};h.append(x);d.append(h);
+  d.append(el('div','score','How people feel about you right now.'));
+  RELS.forEach(k=>d.append(relEl(k)));
+  d.append(el('h2','sec-h','Comms skills'));
+  Object.entries(SKILLS).forEach(([k,l])=>d.append(barEl(l,S.v[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  d.append(el('h2','sec-h','Valor values'));
+  Object.entries(VALUES).forEach(([k,l])=>d.append(barEl(l,S.v[k],6,'var(--violet2)')));
+  d.hidden=false;x.focus();
+}
+$('teamBtn').onclick=openDrawer;
+$('menuBtn').onclick=()=>showTitle();
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('drawer').hidden=true;}});
+
+function showFinal(){
+  clearPanel();
+  const s=S.v;const valSum=s.positive+s.purpose+s.respect;
+  let title,lines=[];
+  if(S.f.blaze){
+    title='The Solo Act';
+    lines=['You sign with Blaze Syndicate. The money is real, and so is the stream deal.',
+     'But nobody plans practice, nobody reviews, and when a match goes badly, the team chat fills with blame. Three roster changes in six months.',
+     'You still play well. You just miss being heard, and hearing others. In March, a message arrives from Coach Raman: "The door is still open."'];
+  }else if(S.f.offer==='main'){
+    title=S.f.won?'The Shot Caller':'The Captain in Waiting';
+    lines=[S.f.won?'State champions, and next season you call for the Comets main roster.':'Second in the state, and next season you call for the Comets main roster.',
+     'People follow you because you are calm, clear and sincere. Because you check, and you listen back.'];
+  }else{
+    title='The Teammate';
+    lines=['Another season in the academy, now as deputy caller next to Mako.',
+     'You have the tools now: State, Describe, Verify. Listen, Mirror, Check. Someone, Want, Obstacle, Change. CALM. Next season is about using them every time, not just when you remember.'];
+  }
+  if(S.f.honest)lines.push('Telling Coach Raman about the offer was the moment the club decided to build around you.');
+  if(s.dee>=2)lines.push('Dee is in the crowd at your first match of next season, holding a sign with your handle spelled wrong. You keep it.');
+  else if(s.dee<0)lines.push('You and Dee talk less these days. Maybe a message, this week, would be a good start.');
+  if(s.theo>=4)lines.push('Theo becomes one of the best info callers in the league. In his first interview, he names you as the reason he kept talking.');
+  else if(s.theo<0)lines.push('Theo moves to another academy at the end of the season. He never really said why.');
+  if(s.jules>=2)lines.push('Jules still gets loud. But now, when you say "one voice", Jules is the first to go quiet.');
+  if(valSum>=6)lines.push('At the season awards, the league gives you the Positive Player award, voted by the other teams.');
+
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in ending');
+  w.append(el('div','brand','Your career · Season one'));w.append(el('h2','end-t',title));
+  const ep=el('div','ep');lines.forEach(l=>ep.append(el('p',null,nm(l))));w.append(ep);
+  w.append(el('h2','sec-h','Your team'));const rg=el('div','relgrid');RELS.forEach(k=>rg.append(relEl(k)));w.append(rg);
+  w.append(el('h2','sec-h','Your comms profile'));
+  const bars=el('div','bars');Object.entries(SKILLS).forEach(([k,l])=>bars.append(barEl(l,s[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  Object.entries(VALUES).forEach(([k,l])=>bars.append(barEl(l,s[k],6,'var(--violet2)')));w.append(bars);
+  const top=Object.entries(SKILLS).sort((a,b)=>s[b[0]]-s[a[0]]);
+  const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'));
+  rf.append(el('p',null,'Your strongest skill this run was '+top[0][1]+'. The one to work on is '+top[3][1]+'. Where could you practise it this week, in a game or in real life?'));w.append(rf);
+  const row=el('div','row');const a=el('button','btn','Play again');a.type='button';a.onclick=()=>{store.set('scouted.save',null);showTitle();};
+  const b=el('button','btn ghost','Pick a chapter');b.type='button';b.onclick=()=>showTitle();row.append(a,b);w.append(row);
+  ov.append(w);ov.hidden=false;ov.scrollTop=0;
+  store.set('scouted.save',null);
+}
+
+/* ---------- title / menu ---------- */
+function showTitle(){
+  clearPanel();
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in title-wrap');
+  w.append(el('div','brand','Valor Esports · Communication Skills Level 2'));
+  w.append(el('h1','logo','Scouted'));
+  const lede=el('p','lede');lede.innerHTML='You are a young player who just got scouted by an academy team. Every chat before, during and after a match shapes your career. <b>Choose what you say. People remember.</b>';w.append(lede);
+  const f=el('div','field');const lb=el('label',null,'Your player handle');lb.htmlFor='handle';const inp=el('input');inp.id='handle';inp.maxLength=16;inp.value=S.name||'Nova';inp.autocomplete='off';f.append(lb,inp);w.append(f);
+  const sv=store.get('scouted.save');
+  const row=el('div','row');
+  const go=el('button','btn','New career');go.type='button';
+  go.onclick=()=>{const nmv=(inp.value||'').trim().slice(0,16)||'Nova';S=fresh();S.name=nmv;startChapter(0);};
+  row.append(go);
+  if(sv&&sv.S&&sv.at<CHAPTERS.length){const c=el('button','btn ghost','Continue: '+CHAPTERS[sv.at].ch+' · '+CHAPTERS[sv.at].name);c.type='button';
+    c.onclick=()=>{S=Object.assign(fresh(),sv.S);startChapter(sv.at);};row.append(c);}
+  const tn=el('button','btn ghost','For coaches');tn.type='button';tn.onclick=showNotes;row.append(tn);
+  w.append(row);
+  const st=el('div','row');st.append(el('span','score','Timers'));const seg=el('div','seg');
+  [['normal','Normal'],['relaxed','Relaxed'],['off','Off']].forEach(([k,l])=>{const b=el('button',SET.timer===k?'on':'',l);b.type='button';b.onclick=()=>{SET.timer=k;store.set('scouted.settings',SET);[...seg.children].forEach(c=>c.className='');b.className='on';};seg.append(b);});
+  st.append(seg);w.append(st);
+  w.append(el('h2','sec-h','Jump to a chapter'));
+  const g=el('div','chgrid');
+  CHAPTERS.forEach((c,i)=>{const b=el('button','chcard');b.type='button';
+    const tagrow=el('div','row');tagrow.style.gap='6px';tagrow.append(el('span','n',c.ch));c.tags.forEach(([k,l])=>tagrow.append(el('span','tag '+k,l)));
+    b.append(tagrow,el('span','ttl',c.name),el('span','s',c.blurb));
+    b.onclick=()=>{const nmv=(inp.value||'').trim().slice(0,16)||'Nova';S=fresh();S.name=nmv;startChapter(i);};g.append(b);});
+  w.append(g);
+  ov.append(w);ov.hidden=false;
+}
+function showNotes(){
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in notes');
+  w.append(el('div','brand','For coaches and teachers'));
+  const h=el('h1','logo','Coach notes');h.style.fontSize='clamp(40px,9vw,72px)';w.append(h);
+  w.append(el('p','lede','Scouted is a short narrative choice game built on the Communication Skills Level 2 course. Each chapter lines up with one module, so students can play a chapter after the matching lessons, or play it all in one go in about 30 to 40 minutes.'));
+  const tw=el('div','tbl');const t=el('table');
+  t.innerHTML='<thead><tr><th>Chapter</th><th>Weeks</th><th>What students practise</th></tr></thead><tbody>'+
+   '<tr><td>Prologue: The Message</td><td>Any</td><td>Game time is training time. Balancing play with school and friends.</td></tr>'+
+   '<tr><td>1: Clear Signal</td><td>1 and 2</td><td>Sender, message, receiver. Building a State, Describe, Verify call. Being a positive player in all chat.</td></tr>'+
+   '<tr><td>2: Heard, Not Listened</td><td>3 and 4</td><td>Listening barriers. A Listen, Mirror, Check drill with distractions. Backing up a quiet teammate.</td></tr>'+
+   '<tr><td>3: The Story We Tell</td><td>5 and 6</td><td>Set, Play, Review. Moving a team on from blame. Shaping Someone, Want, Obstacle, Change for a stream interview.</td></tr>'+
+   '<tr><td>4: Calm Under Pressure</td><td>7 and 8</td><td>A 3P brief (Purpose, Plan, Point). A CALM reset in a tense final. A career choice.</td></tr></tbody>';
+  tw.append(t);w.append(tw);
+  w.append(el('h2','sec-h','How it plays'));
+  const ul=el('ul');['Some replies are timed. If the bar runs out, the player says nothing, and that has consequences too. Set timers to Relaxed or Off on the title screen for students who need more time.',
+   'Characters remember choices. A toast pops up when they do. Open the Team panel to see relationships, comms skills and Valor values.',
+   'Each module has its own mini game: a call builder, a listening drill, a story builder, a 3P brief and a CALM reset. Every pick gets a short explanation.',
+   'Each chapter ends with the matching knowledge and tool cards, a list of the player\'s choices, and a reflection question for the workbook.',
+   'There are several endings. All of them are hopeful, but they reflect how the player treated people along the way.',
+   'Progress saves in this browser only. Use "Jump to a chapter" to start any chapter fresh for a lesson.'].forEach(x=>ul.append(el('li',null,x)));
+  w.append(ul);
+  w.append(el('h2','sec-h','Discussion questions'));
+  const ul2=el('ul');['Which choice was the hardest to make in time? What made it hard?','Did any character react in a way you did not expect? Why do you think they did?','Where did you see a message get lost, and what fixed it?','Pick one moment where staying silent mattered. Was silence the right call?','Which ending did you get? What would you do differently next run?'].forEach(x=>ul2.append(el('li',null,x)));
+  w.append(ul2);
+  const b=el('button','btn','Back');b.type='button';b.onclick=showTitle;const r=el('div','row');r.append(b);w.append(r);
+  ov.append(w);ov.scrollTop=0;
+}
+showTitle();
+</script>
+
+</body>
+</html>

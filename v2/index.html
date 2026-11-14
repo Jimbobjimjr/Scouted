@@ -1,0 +1,1378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scouted</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: one-screen visual novel. HUD strip, illustrated stage (venue art, character sprites, phone or game HUD, dialogue box), action panel below. Single dark Valor look. */
+:root{
+  color-scheme:dark;
+  --bg:#080d22; --panel:#10183a; --panel2:#17214b; --line:#26326b; --line2:#334190;
+  --text:#ecefff; --muted:#9ba5d6; --dim:#6a74a8;
+  --blue:#3f8cff; --violet:#8b5cff; --violet2:#b49bff;
+  --good:#38d39f; --warn:#ffb648; --bad:#ff6b7d;
+  --display:"Chakra Petch","Segoe UI",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.5;overflow:hidden}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--violet2);outline-offset:2px}
+#app{position:relative;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;grid-template-columns:minmax(0,1fr)}
+
+/* HUD */
+.hud{display:flex;align-items:center;gap:10px;padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);background:#0a0f28;z-index:5}
+.hud .ch{font-family:var(--display);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.daychip{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.cycle{display:flex;gap:3px}
+.cycle i{width:16px;height:6px;border-radius:3px;background:var(--panel2)}
+.cycle i.on{background:var(--violet2)}
+.venue{font-size:13px;color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.tag{font-family:var(--mono);font-size:11px;padding:3px 7px;border-radius:4px;letter-spacing:.04em;white-space:nowrap}
+.tag.k{background:rgba(63,140,255,.16);color:#a9c9ff;border:1px solid rgba(63,140,255,.5)}
+.tag.t{background:rgba(139,92,255,.18);color:var(--violet2);border:1px solid rgba(139,92,255,.55)}
+.hbtn{background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:5px 10px;font-size:13px;cursor:pointer;white-space:nowrap}
+.hbtn:hover{border-color:var(--violet)}
+@media (max-width:700px){#hudTags,.daychip .cycle{display:none}.hud .ch{max-width:34vw}}
+
+/* stage */
+.stage{position:relative;overflow:hidden;background:#0a0f2a;min-height:200px;cursor:default}
+.stage.tap{cursor:pointer}
+.bg{position:absolute;inset:0;transition:opacity .5s}
+.bg svg{width:100%;height:100%;display:block}
+.tint{position:absolute;inset:0;pointer-events:none;transition:background .8s}
+.tint.Morning{background:linear-gradient(180deg,rgba(255,190,120,.16),rgba(255,190,120,0) 60%)}
+.tint.Day{background:transparent}
+.tint.Evening{background:linear-gradient(180deg,rgba(139,92,255,.28),rgba(255,120,140,.08))}
+.tint.Night{background:rgba(4,6,24,.42)}
+.scrollx{animation:scrollx 9s linear infinite}
+@keyframes scrollx{to{transform:translateX(-800px)}}
+.cast{position:absolute;left:0;right:0;bottom:0;height:88%;display:flex;justify-content:center;align-items:flex-end;gap:clamp(0px,2vw,30px);pointer-events:none;padding-inline:4%}
+.spr{position:relative;height:100%;max-height:520px;aspect-ratio:200/240;flex:0 1 auto;min-width:0;transition:filter .3s,transform .3s;filter:brightness(.55) saturate(.75);animation:enter .45s ease-out both}
+.spr svg{width:100%;height:100%;display:block;animation:bob 3.6s ease-in-out infinite}
+.spr:nth-child(2) svg{animation-delay:-1.2s}.spr:nth-child(3) svg{animation-delay:-2.1s}.spr:nth-child(4) svg{animation-delay:-.6s}
+.spr.talk{filter:none;transform:translateY(-8px) scale(1.04);z-index:2}
+.spr .eyes{animation:blink 4.8s infinite;transform-origin:100px 104px}
+.spr:nth-child(2) .eyes{animation-delay:-1.7s}.spr:nth-child(3) .eyes{animation-delay:-3.1s}
+.spr .m-open{opacity:0}
+.spr.talk.typing .m-open{animation:talk .22s steps(1) infinite}
+.spr.talk.typing .m-closed{animation:talk2 .22s steps(1) infinite}
+.spr.leave{animation:leave .3s ease-in forwards}
+@keyframes bob{50%{transform:translateY(4px)}}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}
+@keyframes talk{0%{opacity:1}50%{opacity:0}}
+@keyframes talk2{0%{opacity:0}50%{opacity:1}}
+@keyframes enter{from{opacity:0;transform:translateY(30px)}}
+@keyframes leave{to{opacity:0;transform:translateY(30px)}}
+
+/* dialogue box */
+.dlg{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;width:min(820px,calc(100% - 24px));background:rgba(10,14,40,.93);border:1px solid var(--line2);border-radius:14px;padding:12px 16px 14px;box-shadow:0 14px 40px rgba(0,0,0,.5);z-index:3;min-height:76px}
+.dlg .dn{font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.06em;text-transform:uppercase;display:flex;gap:8px;align-items:baseline}
+.dlg .dn small{font-family:var(--body);text-transform:none;letter-spacing:0;color:var(--dim);font-weight:400;font-size:12px}
+.dlg .dt{font-size:18px;line-height:1.45;min-height:1.45em}
+.dlg.sys .dt{font-style:italic;color:#c9d0f2}
+.dlg.tut{border-color:var(--violet);border-style:dashed}
+.dlg.tut .dt{font-style:normal;color:var(--violet2);font-family:var(--mono);font-size:14px}
+.dlg.you{border-color:var(--violet)}
+.dlg .more{position:absolute;right:14px;bottom:8px;width:10px;height:10px;border-right:2px solid var(--violet2);border-bottom:2px solid var(--violet2);transform:rotate(45deg);animation:nudge 1s infinite;opacity:0}
+.stage.tap .dlg .more{opacity:1}
+@keyframes nudge{50%{transform:translateY(3px) rotate(45deg)}}
+
+/* phone */
+.phone{position:absolute;top:4%;bottom:4%;left:50%;transform:translateX(-50%);width:min(340px,86%);background:#0b1030;border:6px solid #1c2458;border-radius:34px;box-shadow:0 20px 60px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;z-index:3;animation:enter .35s ease-out both}
+.ph-top{display:flex;align-items:center;gap:10px;padding:16px 14px 10px;border-bottom:1px solid var(--line);background:#10173f}
+.ph-top .av{width:34px;height:34px;border-radius:50%;overflow:hidden;background:var(--panel2);display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:13px;color:#0b1026;flex:none}
+.ph-top .av svg{width:100%;height:100%}
+.ph-top b{font-family:var(--display);font-size:15px;display:block;line-height:1.1}
+.ph-top small{color:var(--good);font-size:11px}
+.ph-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+.bub{max-width:82%;padding:8px 12px;border-radius:16px;font-size:15px;line-height:1.35;animation:pop .25s ease-out both}
+.bub.in{align-self:flex-start;background:var(--panel2);border-bottom-left-radius:4px}
+.bub.out{align-self:flex-end;background:linear-gradient(135deg,var(--violet),#6a45e6);color:#fff;border-bottom-right-radius:4px}
+.bub.out.silent{background:transparent;border:1px dashed var(--line2);color:var(--muted);font-style:italic}
+.bub.note{align-self:center;background:transparent;color:var(--muted);font-style:italic;font-size:13px;text-align:center;max-width:95%}
+.bub.note.tut{color:var(--violet2);font-style:normal;font-family:var(--mono);font-size:12px;border:1px dashed rgba(139,92,255,.6)}
+.typing-dots{align-self:flex-start;background:var(--panel2);border-radius:16px;padding:10px 14px;display:flex;gap:4px}
+.typing-dots i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:dot 1s infinite}
+.typing-dots i:nth-child(2){animation-delay:.15s}.typing-dots i:nth-child(3){animation-delay:.3s}
+@keyframes dot{50%{opacity:.25;transform:translateY(-2px)}}
+@keyframes pop{from{opacity:0;transform:scale(.9)}}
+
+/* game HUD */
+.ghud{position:absolute;inset:0;pointer-events:none;z-index:2}
+.score{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;background:rgba(6,9,30,.85);border:1px solid var(--line2);border-radius:10px;padding:6px 12px;font-family:var(--display);font-weight:700;letter-spacing:.06em;white-space:nowrap}
+.score .t1{color:var(--violet2);font-size:13px}.score .t2{color:#ff9fae;font-size:13px}
+.score b{font-size:24px;min-width:28px;text-align:center}
+.score .rd{font-family:var(--mono);font-size:10px;color:var(--muted);padding:2px 6px;border:1px solid var(--line2);border-radius:4px}
+.team{position:absolute;left:12px;top:64px;display:flex;flex-direction:column;gap:6px}
+.tm{display:flex;align-items:center;gap:8px;background:rgba(6,9,30,.8);border:1px solid var(--line);border-radius:10px;padding:4px 10px 4px 4px;transition:border-color .2s,box-shadow .2s;font-family:var(--display);font-size:13px;font-weight:600}
+.tm .hd{width:34px;height:34px;border-radius:8px;overflow:hidden;background:var(--panel2);display:grid;place-items:center;font-size:12px}
+.tm .hd svg{width:100%;height:100%}
+.tm .mic{display:flex;gap:2px;align-items:flex-end;height:12px}
+.tm .mic i{width:3px;height:4px;background:var(--dim);border-radius:1px}
+.tm.live{border-color:var(--good);box-shadow:0 0 0 2px rgba(56,211,159,.25)}
+.tm.live .mic i{background:var(--good);animation:eq .4s infinite alternate}
+.tm.live .mic i:nth-child(2){animation-delay:.1s}.tm.live .mic i:nth-child(3){animation-delay:.2s}
+@keyframes eq{to{height:12px}}
+.minimap{position:absolute;right:12px;top:64px;width:110px;height:110px;border-radius:12px;background:rgba(6,9,30,.8);border:1px solid var(--line2);overflow:hidden}
+.minimap svg{width:100%;height:100%}
+@media (max-width:700px){.minimap{display:none}.team{top:56px}.tm{font-size:0;padding-right:4px;gap:4px}.tm .hd{width:28px;height:28px}.score b{font-size:18px}.score .t1,.score .t2{font-size:11px}}
+.igchat{position:absolute;left:12px;bottom:110px;width:min(440px,calc(100% - 24px));background:rgba(4,6,22,.82);border:1px solid var(--line2);border-radius:10px;padding:8px 10px;z-index:3;font-size:14px;display:flex;flex-direction:column;gap:4px}
+.igchat .h{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--warn)}
+.igchat .l b{color:#ff9fae}.igchat .l.me b{color:var(--violet2)}
+
+/* town map */
+.mapwrap{position:absolute;inset:0;z-index:2;background:#0a1030;animation:enter .35s both}
+.townmap{width:100%;height:100%;display:block}
+.pin{cursor:default}
+.pin.on{cursor:pointer}
+.pin .ring{animation:ring 1.6s ease-out infinite;transform-origin:0 0}
+.pin.on:hover>g,.pin.sel>g{filter:brightness(1.3)}
+.pin:not(.on){opacity:.45}
+@keyframes ring{from{transform:scale(.7);opacity:1}to{transform:scale(1.25);opacity:0}}
+.mapnote{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;background:rgba(6,9,30,.88);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+
+/* bottom panel */
+.panel{border-top:1px solid var(--line);background:#0d1432;padding-block:12px calc(12px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-height:52vh;overflow-y:auto}
+.panel-in{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.cont{align-self:stretch;background:transparent;border:1px solid var(--line2);border-radius:10px;padding:11px;cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.06em}
+.cont:hover{border-color:var(--violet);color:var(--text)}
+.q{font-family:var(--display);font-weight:600;font-size:15px;color:var(--violet2);letter-spacing:.03em}
+.timer{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.timer i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--violet),var(--blue));transform-origin:left}
+.timer.low i{background:var(--bad)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:620px){.opts{grid-template-columns:1fr}}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:15px;line-height:1.35;transition:border-color .15s,transform .1s}
+.opt:hover,.opt.hl{border-color:var(--violet);transform:translateY(-1px)}
+.opt kbd{font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--line2);border-radius:4px;padding:1px 6px;color:var(--muted);margin-top:1px}
+.opt .vt{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--violet2);margin-bottom:2px}
+.opt.q2{border-color:var(--good)}.opt.q1{border-color:var(--warn)}.opt.q0{border-color:var(--bad)}
+.opt[disabled]{cursor:default;transform:none}
+.opt.dim{opacity:.45}
+.gm-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.gm-title{font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:14px}
+.gm-sit{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px;color:var(--muted)}
+.slots{display:flex;gap:6px;flex-wrap:wrap}
+.slot{font-family:var(--mono);font-size:12px;padding:5px 9px;border-radius:6px;border:1px solid var(--line2);color:var(--dim)}
+.slot.on{border-color:var(--violet);color:var(--violet2);background:rgba(139,92,255,.14)}
+.slot.done{border-color:var(--good);color:var(--good)}
+.slot-label{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.slot-label .big{font-family:var(--display);font-size:26px;font-weight:700;color:var(--violet2);line-height:1}
+.slot-label .nm{font-family:var(--display);font-weight:600;font-size:16px}
+.slot-label .hint{color:var(--muted);font-size:14px}
+.fb{display:flex;flex-direction:column;gap:8px}
+.fb-row{display:grid;grid-template-columns:auto 1fr;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+.fb-row .k{font-family:var(--display);font-weight:700;color:var(--violet2);min-width:22px}
+.fb-row .w{color:var(--muted)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.dot.q2{background:var(--good)}.dot.q1{background:var(--warn)}.dot.q0{background:var(--bad)}
+.scoretxt{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.scoretxt b{color:var(--text);font-size:16px}
+.callcard{position:relative;background:linear-gradient(135deg,rgba(61,214,176,.12),rgba(139,92,255,.12));border:1px solid rgba(61,214,176,.6);border-radius:12px;padding:16px;font-size:19px;font-family:var(--display);font-weight:600;text-align:center;min-height:80px;display:grid;place-items:center}
+.callcard.gone{color:var(--dim);font-family:var(--mono);font-size:13px;font-weight:500;border-style:dashed}
+.ping{position:absolute;right:10px;top:-14px;background:var(--warn);color:#1a1300;font-family:var(--body);font-size:13px;font-weight:700;padding:5px 10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);animation:shake .5s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+
+/* toasts */
+.toasts{position:fixed;top:calc(56px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:8px;z-index:40;pointer-events:none;width:min(320px,calc(100% - 24px))}
+.toast{display:flex;align-items:center;gap:10px;background:rgba(16,24,58,.97);border:1px solid var(--line2);border-left:4px solid var(--violet);border-radius:10px;padding:8px 12px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:tin .35s ease-out both}
+.toast .av{width:28px;height:28px;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:var(--panel2);flex:none}
+.toast .av svg{width:100%;height:100%}
+.toast.out{animation:tout .4s ease-in forwards}
+@keyframes tin{from{opacity:0;transform:translateX(20px)}}
+@keyframes tout{to{opacity:0;transform:translateX(20px)}}
+
+/* overlays */
+.ov{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-block:calc(24px + env(safe-area-inset-top,0px)) calc(24px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.ov-in{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.hero{position:relative;height:clamp(200px,38vh,340px);border-radius:18px;overflow:hidden;border:1px solid var(--line2)}
+.hero .bg svg{width:100%;height:100%}
+.hero .cast{height:92%}
+.hero .spr{filter:none}
+.hero .logo-wrap{position:absolute;left:20px;top:16px;z-index:3}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--violet2);text-transform:uppercase}
+h1.logo{font-family:var(--display);font-weight:700;font-size:clamp(52px,12vw,110px);line-height:.9;letter-spacing:.02em;margin:6px 0 0;text-transform:uppercase;background:linear-gradient(180deg,#fff 30%,var(--violet2));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 4px 18px rgba(0,0,0,.6))}
+.lede{font-size:18px;color:var(--muted);max-width:62ch;margin:0}
+.lede b{color:var(--text)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{background:linear-gradient(135deg,var(--violet),#6a45e6);border:0;border-radius:10px;padding:12px 20px;font-family:var(--display);font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;color:#fff}
+.btn.ghost{background:transparent;border:1px solid var(--line2);color:var(--text)}
+.btn.ghost:hover{border-color:var(--violet)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.field input{background:var(--panel);border:1px solid var(--line2);border-radius:10px;padding:11px 14px;font:inherit;font-size:18px;color:var(--text);width:min(320px,100%)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--violet);color:#fff}
+.chgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.chcard{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:6px}
+.chcard:hover{border-color:var(--violet)}
+.chcard .n{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.chcard .ttl{font-family:var(--display);font-weight:700;font-size:17px}
+.chcard .s{font-size:13px;color:var(--muted)}
+.sec-h{font-family:var(--display);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:14px;color:var(--muted);margin:0}
+.toolcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.tc{border-radius:14px;padding:16px;border:1px solid;display:flex;flex-direction:column;gap:10px}
+.tc.k{border-color:rgba(63,140,255,.6);background:linear-gradient(160deg,rgba(63,140,255,.16),rgba(63,140,255,.04))}
+.tc.t{border-color:rgba(139,92,255,.65);background:linear-gradient(160deg,rgba(139,92,255,.2),rgba(139,92,255,.04))}
+.tc .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.tc.k .lbl{color:#a9c9ff}.tc.t .lbl{color:var(--violet2)}
+.tc h3{font-family:var(--display);font-size:22px;margin:0;line-height:1.1;text-wrap:balance}
+.tc p{margin:0;color:var(--muted);font-size:15px}
+.steps{display:flex;flex-direction:column;gap:6px}
+.steps div{display:grid;grid-template-columns:30px 1fr;gap:8px;align-items:baseline;font-size:15px}
+.steps b{font-family:var(--display);font-size:20px;color:var(--violet2)}
+.steps span em{color:var(--muted);font-style:normal}
+.picks{display:flex;flex-direction:column;gap:8px}
+.pick{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.pick .a{font-size:15px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.chip.up{border-color:rgba(56,211,159,.6);color:var(--good)}
+.chip.dn{border-color:rgba(255,107,125,.6);color:var(--bad)}
+.reflect{border:1px dashed var(--line2);border-radius:12px;padding:14px 16px}
+.reflect p{margin:6px 0 0;font-size:17px}
+.bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.bar{display:flex;flex-direction:column;gap:5px}
+.bar .top{display:flex;justify-content:space-between;font-size:14px}
+.bar .top span:last-child{font-family:var(--mono);color:var(--muted);font-size:12px}
+.bar .tr{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.bar .tr i{display:block;height:100%;border-radius:4px}
+.relgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rel{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.rel .av{width:52px;height:52px;border-radius:12px;overflow:hidden;background:var(--panel2)}
+.rel .av svg{width:100%;height:100%}
+.rel .nm{font-family:var(--display);font-weight:600}
+.rel .st{font-size:13px;color:var(--muted)}
+.pips{display:flex;gap:3px;margin-top:4px}
+.pips i{width:14px;height:5px;border-radius:2px;background:var(--panel2)}
+.pips i.on{background:var(--violet2)}
+.pips i.neg{background:var(--bad)}
+.ending h2.end-t{font-family:var(--display);font-size:clamp(34px,7vw,56px);line-height:1;margin:4px 0 0;text-transform:uppercase}
+.ending p{font-size:17px;margin:0;max-width:65ch}
+.ending .ep{display:flex;flex-direction:column;gap:10px}
+.notes table{width:100%;border-collapse:collapse;font-size:14px}
+.notes th,.notes td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.notes th{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.tbl{overflow-x:auto}
+.notes ul{margin:0;padding-left:20px;color:var(--muted)}
+.notes li{margin:4px 0}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,100%);z-index:35;background:var(--panel);border-left:1px solid var(--line2);padding-block:calc(18px + env(safe-area-inset-top,0px)) 18px;padding-left:18px;padding-right:max(18px,env(safe-area-inset-right,0px));overflow-y:auto;display:flex;flex-direction:column;gap:12px;box-shadow:-20px 0 40px rgba(0,0,0,.4)}
+.drawer .rel{background:var(--panel2)}
+.logl{display:flex;flex-direction:column;gap:2px;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.logl b{font-family:var(--display);font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+.logl.sys{color:var(--muted);font-style:italic}
+.logl.sc{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;border:0;padding-top:12px}
+@media (max-width:700px){.stage .cast{top:3%;bottom:auto;height:62%}.dlg .dt{font-size:16px}.dlg{padding:10px 12px 12px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<style>body{margin:0}</style>
+</head>
+<body>
+
+
+<div id="app">
+  <header class="hud">
+    <span class="ch" id="hudCh">Scouted</span>
+    <span id="hudTags" class="row" style="gap:6px"></span>
+    <span class="daychip" id="hudDay"><span id="hudDayTxt"></span><span class="cycle" id="hudCycle"><i></i><i></i><i></i><i></i></span></span>
+    <span class="venue" id="hudVenue"></span>
+    <button class="hbtn" id="logBtn" type="button">Log</button>
+    <button class="hbtn" id="teamBtn" type="button">Team</button>
+    <button class="hbtn" id="menuBtn" type="button">Menu</button>
+  </header>
+  <main class="stage" id="stage">
+    <div class="bg" id="bg"></div>
+    <div class="tint" id="tint"></div>
+    <div class="cast" id="cast"></div>
+    <div class="ghud" id="ghud" hidden>
+      <div class="score"><span class="t1">COMETS</span><b id="sc1">0</b><span class="rd" id="rd">ROUND 1</span><b id="sc2">0</b><span class="t2" id="opp">NORTHGATE</span></div>
+      <div class="team" id="team"></div>
+      <div class="minimap"><svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#0a0e2c"/><path d="M10 80 L30 80 L30 50 L50 50 L50 20 L85 20 M50 50 L80 50 L80 85" stroke="#334190" stroke-width="8" fill="none" stroke-linecap="round"/><path d="M50 44 l6 6 -6 6 -6 -6z" fill="#b49bff"/><circle cx="20" cy="80" r="4" fill="#3dd6b0"/><circle cx="28" cy="74" r="4" fill="#5aa2ff"/><circle cx="16" cy="72" r="4" fill="#ff8a7a"/><circle cx="80" cy="25" r="4" fill="#ff6b7d"/></svg></div>
+    </div>
+    <div class="igchat" id="igchat" hidden><div class="h">ALL CHAT</div><div id="igMsgs" style="display:flex;flex-direction:column;gap:4px"></div></div>
+    <div class="phone" id="phone" hidden><div class="ph-top"><div class="av" id="phAv"></div><div><b id="phName"></b><small>online</small></div></div><div class="ph-msgs" id="phMsgs"></div></div>
+    <div class="mapwrap" id="mapwrap" hidden></div>
+    <div class="dlg" id="dlg" hidden><div class="dn" id="dName"></div><div class="dt" id="dText"></div><span class="more"></span></div>
+  </main>
+  <footer class="panel"><div class="panel-in" id="panel"></div></footer>
+</div>
+<div class="toasts" id="toasts"></div>
+<div class="ov" id="ov" hidden></div>
+<div class="drawer" id="drawer" hidden></div>
+<script>
+/* ===== Scouted v2 art: original SVG sprites, venue backgrounds and town map ===== */
+function shade(hex,amt){
+  let c=hex.replace('#','');if(c.length===3)c=c.split('').map(x=>x+x).join('');
+  let r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
+  const f=v=>Math.max(0,Math.min(255,Math.round(amt<0?v*(1+amt):v+(255-v)*amt)));
+  return '#'+[f(r),f(g),f(b)].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+const LOOK={
+  coach:{skin:'#8d5a3b',hair:'bun',hc:'#1d1420',top:'#3b2d6b',acc:'#b49bff',type:'blazer',lanyard:1},
+  mako:{skin:'#c68e62',hair:'short',hc:'#1f1712',top:'#2a2f7a',acc:'#5aa2ff',type:'jersey',headset:1},
+  jules:{skin:'#f0c7a6',hair:'spiky',hc:'#d9572f',top:'#2a2f7a',acc:'#ff8a7a',type:'jersey',headset:1},
+  theo:{skin:'#6b4630',hair:'curly',hc:'#140e0b',top:'#2a2f7a',acc:'#3dd6b0',type:'jersey',glasses:1,headset:1},
+  dee:{skin:'#e8b98f',hair:'pony',hc:'#5a3a22',top:'#f5c451',acc:'#fff1c2',type:'hoodie'},
+  sam:{skin:'#b98463',hair:'beanie',hc:'#7d88b8',top:'#3d4670',acc:'#a9b4d6',type:'hoodie'},
+  host:{skin:'#d9a07a',hair:'bob',hc:'#7b5cd6',top:'#c7d2fe',acc:'#8b5cff',type:'blazer',headset:1},
+  kai:{skin:'#f2d0b5',hair:'messy',hc:'#e2c25a',top:'#24306b',acc:'#ffffff',type:'polo'},
+  ryder:{skin:'#e6b48c',hair:'slick',hc:'#2b2b2b',top:'#ff9f43',acc:'#1a1a1a',type:'jacket'}
+};
+const HAIR={
+  short:c=>`<path d="M57 100 C52 58 76 46 100 46 C126 46 150 58 143 100 C140 80 128 68 112 66 C100 74 80 72 70 70 C62 78 58 88 57 100Z" fill="${c}"/>`,
+  bun:c=>`<path d="M57 98 C54 56 146 56 143 98 C136 74 118 64 100 64 C82 64 64 74 57 98Z" fill="${c}"/>`,
+  spiky:c=>`<path d="M57 100 L52 64 L68 70 L68 44 L86 58 L98 34 L110 56 L130 42 L130 66 L148 60 L143 100 C136 78 118 70 100 70 C82 70 64 78 57 100Z" fill="${c}"/>`,
+  curly:c=>`<g fill="${c}"><circle cx="66" cy="80" r="15"/><circle cx="78" cy="62" r="16"/><circle cx="100" cy="54" r="18"/><circle cx="122" cy="62" r="16"/><circle cx="134" cy="80" r="15"/><circle cx="60" cy="98" r="9"/><circle cx="140" cy="98" r="9"/><circle cx="88" cy="70" r="12"/><circle cx="112" cy="70" r="12"/></g>`,
+  pony:c=>`<path d="M57 100 C52 56 148 56 143 100 C140 76 124 64 104 62 C96 70 76 74 62 80 C60 86 58 92 57 100Z" fill="${c}"/>`,
+  beanie:c=>`<path d="M54 92 C54 38 146 38 146 92Z" fill="${c}"/><rect x="51" y="80" width="98" height="17" rx="8" fill="${shade(c,-.25)}"/><circle cx="100" cy="36" r="8" fill="${shade(c,.2)}"/>`,
+  bob:c=>`<path d="M56 96 C54 54 146 54 144 96 C130 80 110 70 96 72 C80 74 64 84 56 96Z" fill="${c}"/>`,
+  messy:c=>`<path d="M57 100 C50 60 70 44 92 46 L96 34 L104 46 L116 38 L118 50 C138 54 150 70 143 100 C138 82 126 72 108 70 C94 76 74 76 66 80 C60 86 58 92 57 100Z" fill="${c}"/>`,
+  slick:c=>`<path d="M57 96 C54 52 146 50 143 96 C138 72 110 60 84 66 C70 70 60 82 57 96Z" fill="${c}"/>`
+};
+function sprite(k,opt){
+  opt=opt||{};const L=LOOK[k];if(!L)return '';
+  const sk=L.skin,hc=L.hc,top=L.top,acc=L.acc,dk=shade(top,-.3),skd=shade(sk,-.14);
+  let back='';
+  if(L.hair==='pony')back=`<path d="M136 80 C170 92 168 150 150 166 C146 140 140 120 132 104Z" fill="${hc}"/>`;
+  if(L.hair==='bob')back=`<path d="M52 92 C52 50 148 50 148 92 L152 150 C130 160 70 160 48 150Z" fill="${hc}"/>`;
+  if(L.hair==='bun')back=`<circle cx="100" cy="44" r="18" fill="${hc}"/>`;
+  let body=`<path d="M16 240 C18 190 58 166 100 166 C142 166 182 190 184 240Z" fill="${top}"/>`;
+  if(L.type==='jersey')body+=`<path d="M28 200 C60 180 140 180 172 200" stroke="${acc}" stroke-width="7" fill="none"/><path d="M84 166 L100 188 L116 166Z" fill="${dk}"/><circle cx="134" cy="214" r="10" fill="none" stroke="${acc}" stroke-width="3"/><path d="M134 207 l2.4 4.6 5 .8 -3.6 3.6 .8 5 -4.6 -2.4 -4.6 2.4 .8 -5 -3.6 -3.6 5 -.8z" fill="${acc}"/>`;
+  if(L.type==='hoodie')body+=`<path d="M60 172 C70 150 130 150 140 172 C126 186 74 186 60 172Z" fill="${dk}"/><path d="M90 182 L88 214 M110 182 L112 214" stroke="${acc}" stroke-width="3" stroke-linecap="round"/>`;
+  if(L.type==='blazer'||L.type==='jacket')body+=`<path d="M86 166 L100 200 L114 166Z" fill="${L.type==='jacket'?'#1a1a1a':'#eef0ff'}"/><path d="M78 166 L100 222 L122 166 L136 172 L104 240 L96 240 L64 172Z" fill="${dk}" opacity=".85"/>`;
+  if(L.type==='polo')body+=`<path d="M80 166 L100 180 L120 166 L120 180 L100 192 L80 180Z" fill="#eef0ff"/><path d="M100 192 L100 214" stroke="#eef0ff" stroke-width="3"/>`;
+  if(L.lanyard)body+=`<path d="M88 172 L100 222 L112 172" stroke="${acc}" stroke-width="3" fill="none"/><rect x="91" y="220" width="18" height="22" rx="3" fill="#eef0ff"/><rect x="95" y="226" width="10" height="3" fill="${acc}"/>`;
+  const face=`<path d="M76 90 Q84 85 92 89 M108 89 Q116 85 124 90" stroke="${shade(hc,-.3)}" stroke-width="4" stroke-linecap="round" fill="none"/>
+   <g class="eyes"><ellipse cx="84" cy="104" rx="5" ry="6" fill="#1a1430"/><ellipse cx="116" cy="104" rx="5" ry="6" fill="#1a1430"/><circle cx="86" cy="102" r="1.7" fill="#fff"/><circle cx="118" cy="102" r="1.7" fill="#fff"/></g>
+   <path d="M100 108 Q95 118 101 120" stroke="${shade(sk,-.25)}" stroke-width="3" fill="none" stroke-linecap="round"/>
+   <ellipse cx="74" cy="120" rx="7" ry="4" fill="#ff7a8a" opacity=".18"/><ellipse cx="126" cy="120" rx="7" ry="4" fill="#ff7a8a" opacity=".18"/>
+   <path class="m-closed" d="M89 130 Q100 138 111 130" stroke="#5a2034" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+   <ellipse class="m-open" cx="100" cy="132" rx="8" ry="6" fill="#4a1426"/>`;
+  const glasses=L.glasses?`<g fill="rgba(255,255,255,.08)" stroke="#e9ecff" stroke-width="3"><rect x="71" y="93" width="26" height="21" rx="8"/><rect x="103" y="93" width="26" height="21" rx="8"/><path d="M97 102 L103 102"/></g>`:'';
+  const hs=(L.headset&&opt.headset!==false)?`<path d="M56 104 C54 38 146 38 144 104" stroke="#151a40" stroke-width="8" fill="none"/><rect x="45" y="93" width="17" height="29" rx="7" fill="#151a40" stroke="${acc}" stroke-width="2"/><rect x="138" y="93" width="17" height="29" rx="7" fill="#151a40" stroke="${acc}" stroke-width="2"/><path d="M54 120 C56 140 74 142 86 137" stroke="#151a40" stroke-width="4" fill="none"/><circle cx="87" cy="137" r="4" fill="${acc}"/>`:'';
+  const vb=opt.head?'38 30 124 124':'0 0 200 240';
+  return `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${back}<rect x="87" y="136" width="26" height="40" rx="11" fill="${skd}"/>${body}<ellipse cx="58" cy="106" rx="7" ry="10" fill="${skd}"/><ellipse cx="142" cy="106" rx="7" ry="10" fill="${skd}"/><ellipse cx="100" cy="102" rx="42" ry="48" fill="${sk}"/>${HAIR[L.hair](hc)}${face}${glasses}${hs}</svg>`;
+}
+
+/* ---- venue backgrounds, 800x450 ---- */
+const stars=(n,w,h,seed)=>{let s='',x=seed;for(let i=0;i<n;i++){x=(x*9301+49297)%233280;const a=x/233280;x=(x*9301+49297)%233280;const b=x/233280;s+=`<circle cx="${(a*w).toFixed(0)}" cy="${(b*h).toFixed(0)}" r="${(a*1.6+.4).toFixed(1)}" fill="#e9ecff" opacity="${(b*.6+.3).toFixed(2)}"/>`;}return s;};
+const BG={
+home:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="bhW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2252"/><stop offset="1" stop-color="#11173a"/></linearGradient><radialGradient id="bhG"><stop offset="0" stop-color="#8b5cff" stop-opacity=".5"/><stop offset="1" stop-color="#8b5cff" stop-opacity="0"/></radialGradient></defs>
+<rect width="800" height="450" fill="url(#bhW)"/><rect y="362" width="800" height="88" fill="#0c1130"/>
+<rect x="530" y="56" width="200" height="170" rx="6" fill="#070b22"/><g transform="translate(530 56)">${stars(18,200,170,7)}</g><circle cx="690" cy="98" r="15" fill="#e9ecff" opacity=".92"/>
+<rect x="530" y="56" width="200" height="170" rx="6" fill="none" stroke="#2c3678" stroke-width="8"/><path d="M630 56 V226 M530 141 H730" stroke="#2c3678" stroke-width="5"/>
+<path d="M516 46 C540 120 528 200 552 248 L516 248Z" fill="#3a2f8f"/><path d="M744 46 C720 120 732 200 708 248 L744 248Z" fill="#3a2f8f"/><rect x="508" y="40" width="244" height="10" rx="5" fill="#2c3678"/>
+<rect x="392" y="78" width="84" height="116" rx="4" fill="#2a2f7a"/><rect x="402" y="90" width="64" height="46" fill="#8b5cff" opacity=".55"/><path d="M412 150 H456 M412 162 H446 M412 174 H452" stroke="#b49bff" stroke-width="4"/>
+<ellipse cx="230" cy="236" rx="210" ry="120" fill="url(#bhG)"/>
+<rect x="138" y="172" width="184" height="114" rx="8" fill="#0b0f26" stroke="#3d3a7a" stroke-width="4"/><rect x="146" y="180" width="168" height="98" rx="4" fill="#271f6e"/><path d="M146 278 L196 222 L232 252 L268 210 L314 278Z" fill="#3f8cff" opacity=".5"/><circle cx="230" cy="229" r="6" fill="none" stroke="#e9ecff" stroke-width="2"/>
+<rect x="218" y="286" width="24" height="10" fill="#3d3a7a"/><rect x="58" y="294" width="344" height="14" rx="4" fill="#2a2350"/><rect x="78" y="308" width="14" height="80" fill="#1e1a3e"/><rect x="368" y="308" width="14" height="80" fill="#1e1a3e"/>
+<rect x="176" y="282" width="110" height="10" rx="3" fill="#1b1840"/><ellipse cx="318" cy="288" rx="10" ry="6" fill="#1b1840"/>
+<rect x="560" y="322" width="240" height="70" rx="12" fill="#2b3570"/><rect x="570" y="302" width="86" height="32" rx="12" fill="#c7d2fe" opacity=".75"/><rect x="560" y="350" width="240" height="42" fill="#3a2f8f"/></svg>`,
+school:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="bsS" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb2ff"/><stop offset="1" stop-color="#c7dbff"/></linearGradient></defs>
+<rect width="800" height="450" fill="#27347a"/><rect y="370" width="800" height="80" fill="#1a2357"/>
+<g><rect x="30" y="60" width="150" height="190" rx="4" fill="url(#bsS)"/><circle cx="80" cy="210" r="40" fill="#2f8f7a"/><circle cx="130" cy="220" r="34" fill="#3aa58a"/><rect x="30" y="60" width="150" height="190" rx="4" fill="none" stroke="#e9ecff" stroke-width="6"/><path d="M105 60 V250 M30 155 H180" stroke="#e9ecff" stroke-width="4"/></g>
+<rect x="250" y="70" width="330" height="190" rx="6" fill="#e3e8ff" stroke="#9aa6dc" stroke-width="6"/>
+<text x="270" y="112" font-family="Chakra Petch, sans-serif" font-size="24" font-weight="700" fill="#2a2f7a">GROUP PROJECT</text>
+<path d="M272 140 H520 M272 170 H480 M272 200 H540" stroke="#3f8cff" stroke-width="5" stroke-linecap="round" opacity=".7"/><path d="M500 225 l20 -20 l10 10z" fill="#8b5cff"/>
+<circle cx="660" cy="96" r="30" fill="#e3e8ff" stroke="#9aa6dc" stroke-width="5"/><path d="M660 96 V76 M660 96 L674 104" stroke="#2a2f7a" stroke-width="4" stroke-linecap="round"/>
+<g fill="#33449a" stroke="#22307a" stroke-width="3"><rect x="620" y="150" width="56" height="220"/><rect x="680" y="150" width="56" height="220"/><rect x="740" y="150" width="56" height="220"/></g><g fill="#c7d2fe"><rect x="664" y="250" width="6" height="22"/><rect x="724" y="250" width="6" height="22"/><rect x="784" y="250" width="6" height="22"/></g>
+<g fill="#3a3470"><rect x="60" y="340" width="220" height="16" rx="4"/><rect x="330" y="350" width="240" height="16" rx="4"/></g><g fill="#2a2556"><rect x="80" y="356" width="12" height="60"/><rect x="250" y="356" width="12" height="60"/><rect x="350" y="366" width="12" height="60"/><rect x="540" y="366" width="12" height="60"/></g></svg>`,
+library:()=>{let books='';const cols=['#8b5cff','#3f8cff','#3dd6b0','#f5c451','#ff8a7a','#b49bff','#5aa2ff'];let x=0;
+  for(let sh=0;sh<3;sh++){for(let row=0;row<4;row++){let bx=60+sh*240;while(bx<260+sh*240){const w=10+((bx*7+row*13)%12);const h=44+((bx+row*5)%18);books+=`<rect x="${bx}" y="${100+row*66+(60-h)}" width="${w}" height="${h}" fill="${cols[(x++)%cols.length]}" opacity=".85"/>`;bx+=w+3;}}}
+  return `<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><rect width="800" height="450" fill="#1c2352"/><rect y="370" width="800" height="80" fill="#121838"/>
+  <g fill="#3a2f5f">${[0,1,2].map(i=>`<rect x="${50+i*240}" y="80" width="220" height="290" rx="4"/>`).join('')}</g>${books}<g fill="#4b3d78">${[0,1,2].map(i=>[0,1,2,3,4].map(r=>`<rect x="${50+i*240}" y="${96+r*66}" width="220" height="6"/>`).join('')).join('')}</g>
+  <rect x="200" y="330" width="400" height="18" rx="5" fill="#3a2f8f"/><path d="M520 330 L540 280 L560 280 L548 330Z" fill="#f5c451" opacity=".9"/><ellipse cx="550" cy="300" rx="80" ry="40" fill="#f5c451" opacity=".12"/></svg>`;},
+academy:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="baW" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2156"/><stop offset="1" stop-color="#141943"/></linearGradient><linearGradient id="baL" x1="0" x2="1"><stop offset="0" stop-color="#8b5cff"/><stop offset="1" stop-color="#3f8cff"/></linearGradient></defs>
+<rect width="800" height="450" fill="url(#baW)"/><rect y="34" width="800" height="6" fill="url(#baL)"/><rect y="40" width="800" height="40" fill="url(#baL)" opacity=".08"/><rect y="372" width="800" height="78" fill="#0d1232"/>
+<g transform="translate(110 150)"><circle r="56" fill="#141a48" stroke="#b49bff" stroke-width="6"/><path d="M0 -34 l10 20 22 3 -16 15 4 22 -20 -11 -20 11 4 -22 -16 -15 22 -3z" fill="#b49bff"/></g>
+<text x="110" y="236" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="22" font-weight="700" fill="#e9ecff" letter-spacing="3">COMETS</text>
+<rect x="250" y="70" width="300" height="40" rx="6" fill="#141a48" stroke="#334190" stroke-width="2"/><text x="400" y="97" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="16" font-weight="700" fill="#b49bff" letter-spacing="2">POSITIVE · PURPOSEFUL · RESPECTFUL</text>
+<rect x="560" y="120" width="200" height="140" rx="6" fill="#e3e8ff" stroke="#8a95d0" stroke-width="5"/><text x="576" y="152" font-family="Chakra Petch, sans-serif" font-size="18" font-weight="700" fill="#2a2f7a">PLAN</text><path d="M578 172 H700 M578 196 H730 M578 220 H680" stroke="#8b5cff" stroke-width="5" stroke-linecap="round" opacity=".7"/><circle cx="720" cy="232" r="10" fill="none" stroke="#3f8cff" stroke-width="4"/>
+<g>${[0,1,2,3,4].map(i=>`<rect x="${40+i*150}" y="300" width="130" height="10" rx="3" fill="#2a2350"/><rect x="${62+i*150}" y="236" width="86" height="58" rx="5" fill="#0a0e26" stroke="#3d3a7a" stroke-width="3"/><rect x="${67+i*150}" y="241" width="76" height="48" rx="3" fill="${i%2?'#2a3d9a':'#3b2a8a'}"/><rect x="${98+i*150}" y="294" width="14" height="6" fill="#3d3a7a"/>`).join('')}</g>
+<g fill="#0a0e26" opacity=".9">${[0,1,2,3,4].map(i=>`<path d="M${80+i*150} 450 L${84+i*150} 330 C${86+i*150} 316 ${134+i*150} 316 ${136+i*150} 330 L${140+i*150} 450Z"/>`).join('')}</g></svg>`,
+arena:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="brB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8b5cff" stop-opacity=".35"/><stop offset="1" stop-color="#8b5cff" stop-opacity="0"/></linearGradient></defs>
+<rect width="800" height="450" fill="#070a1e"/><path d="M0 40 H800" stroke="#1d2450" stroke-width="10"/>
+<g fill="url(#brB)"><path d="M120 40 L40 450 L240 450Z"/><path d="M400 40 L300 450 L500 450Z"/><path d="M680 40 L560 450 L760 450Z"/></g>
+<rect x="200" y="70" width="400" height="200" rx="8" fill="#10163f" stroke="#3f8cff" stroke-width="4"/><rect x="210" y="80" width="380" height="180" rx="4" fill="#1a1f5a"/>
+<text x="400" y="150" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="34" font-weight="700" fill="#e9ecff" letter-spacing="3">STATE YOUTH</text><text x="400" y="192" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="34" font-weight="700" fill="#b49bff" letter-spacing="3">LEAGUE</text><path d="M300 222 H500" stroke="#3f8cff" stroke-width="4"/>
+<rect y="300" width="800" height="12" fill="#3f8cff" opacity=".6"/><rect y="312" width="800" height="138" fill="#0b0f2a"/>
+<g fill="#151b46">${Array.from({length:22},(_,i)=>`<circle cx="${i*38+10}" cy="${430-((i*7)%3)*6}" r="${18+((i*5)%4)*2}"/>`).join('')}</g><g fill="#f5c451">${Array.from({length:9},(_,i)=>`<rect x="${i*90+30}" y="${392-((i*3)%2)*8}" width="5" height="8" rx="1"/>`).join('')}</g></svg>`,
+stream:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><rect width="800" height="450" fill="#0e1336"/><rect x="60" y="40" width="680" height="250" rx="10" fill="#171d52"/>
+<g opacity=".5">${Array.from({length:10},(_,i)=>`<path d="M${60+i*80} 290 L${140+i*80} 40" stroke="#8b5cff" stroke-width="18" opacity=".25"/>`).join('')}</g>
+<rect x="290" y="70" width="220" height="56" rx="8" fill="#0e1336" stroke="#b49bff" stroke-width="3"/><text x="400" y="108" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="28" font-weight="700" fill="#e9ecff">SYL <tspan fill="#ff6b7d">LIVE</tspan></text>
+<rect x="100" y="320" width="600" height="40" rx="8" fill="#2a2f7a"/><rect x="100" y="360" width="600" height="90" fill="#1d2160"/><circle cx="700" cy="200" r="40" fill="#f5c451" opacity=".08"/></svg>`,
+bus:()=>`<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><rect width="800" height="450" fill="#131a44"/>
+<rect x="40" y="60" width="720" height="190" rx="10" fill="#6f8fe0"/><g class="scrollx">${[0,1].map(r=>Array.from({length:12},(_,i)=>`<rect x="${r*800+i*70+10}" y="${250-60-((i*37)%90)}" width="${50+((i*13)%20)}" height="${60+((i*37)%90)}" fill="#2a3a8f" opacity=".85"/>`).join('')).join('')}</g>
+<rect x="40" y="60" width="720" height="190" rx="10" fill="none" stroke="#0b1030" stroke-width="12"/><path d="M280 60 V250 M520 60 V250" stroke="#0b1030" stroke-width="10"/><path d="M40 40 H760" stroke="#c7d2fe" stroke-width="6" opacity=".6"/>
+<g fill="#3a2f8f"><rect x="60" y="290" width="200" height="160" rx="18"/><rect x="540" y="290" width="200" height="160" rx="18"/></g><g fill="#2a2370"><rect x="60" y="270" width="200" height="40" rx="14"/><rect x="540" y="270" width="200" height="40" rx="14"/></g><path d="M400 250 V450" stroke="#f5c451" stroke-width="6"/></svg>`,
+game:()=>{let grid='';for(let i=-10;i<=10;i++)grid+=`<path d="M400 230 L${400+i*120} 450" stroke="#3f8cff" stroke-width="1" opacity=".25"/>`;for(let j=0;j<7;j++){const y=240+j*j*5;grid+=`<path d="M0 ${y} H800" stroke="#3f8cff" stroke-width="1" opacity=".2"/>`;}
+  return `<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="bgS" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a1d6b"/><stop offset="1" stop-color="#0d1236"/></linearGradient><radialGradient id="bgO"><stop offset="0" stop-color="#b49bff" stop-opacity=".8"/><stop offset="1" stop-color="#b49bff" stop-opacity="0"/></radialGradient></defs>
+  <rect width="800" height="450" fill="url(#bgS)"/><rect y="230" width="800" height="220" fill="#0a0e2c"/>${grid}
+  <g fill="#1b2160" stroke="#3d4aa8" stroke-width="2"><path d="M40 230 L40 120 L150 100 L190 120 L190 230Z"/><path d="M600 230 L600 90 L700 70 L760 100 L760 230Z"/><path d="M230 230 L230 170 L300 160 L300 230Z"/><path d="M500 230 L500 160 L570 170 L570 230Z"/></g>
+  <circle cx="400" cy="200" r="70" fill="url(#bgO)"/><path d="M400 160 L428 200 L400 240 L372 200Z" fill="#b49bff" stroke="#e9ecff" stroke-width="3"/><text x="400" y="207" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="18" font-weight="700" fill="#0d1236">M</text>
+  <g stroke="#e9ecff" stroke-width="2" opacity=".8"><path d="M400 300 V312 M400 324 V336 M388 318 H376 M412 318 H424"/></g></svg>`;}
+};
+
+/* ---- town map, 1600x900 ---- */
+const PINS={home:{x:280,y:640,n:'Home'},school:{x:620,y:250,n:'School'},library:{x:960,y:200,n:'Library'},academy:{x:1060,y:600,n:'Comets Academy'},arena:{x:1360,y:300,n:'Arena'}};
+const ICON={
+ home:`<path d="M-34 6 L0 -26 L34 6 V36 H-34Z" fill="#2a2f7a" stroke="#b49bff" stroke-width="4"/><rect x="-10" y="12" width="20" height="24" fill="#f5c451"/>`,
+ school:`<rect x="-46" y="-14" width="92" height="50" fill="#2a2f7a" stroke="#b49bff" stroke-width="4"/><path d="M-50 -14 L0 -40 L50 -14Z" fill="#3a2f8f" stroke="#b49bff" stroke-width="4"/><path d="M0 -40 V-66 L20 -60 L0 -54" stroke="#e9ecff" stroke-width="3" fill="#ff8a7a"/><g fill="#7fb2ff"><rect x="-34" y="0" width="14" height="14"/><rect x="20" y="0" width="14" height="14"/></g>`,
+ library:`<path d="M-48 -18 L0 -44 L48 -18Z" fill="#3a2f8f" stroke="#b49bff" stroke-width="4"/><rect x="-46" y="-18" width="92" height="54" fill="#2a2f7a" stroke="#b49bff" stroke-width="4"/><g fill="#c7d2fe"><rect x="-34" y="-8" width="8" height="38"/><rect x="-12" y="-8" width="8" height="38"/><rect x="6" y="-8" width="8" height="38"/><rect x="26" y="-8" width="8" height="38"/></g>`,
+ academy:`<rect x="-54" y="-30" width="108" height="66" rx="8" fill="#2a2f7a" stroke="#b49bff" stroke-width="4"/><path d="M0 -20 l7 14 15 2 -11 10 3 15 -14 -7 -14 7 3 -15 -11 -10 15 -2z" fill="#b49bff"/>`,
+ arena:`<ellipse cx="0" cy="6" rx="70" ry="40" fill="#2a2f7a" stroke="#b49bff" stroke-width="4"/><ellipse cx="0" cy="6" rx="42" ry="20" fill="#3f8cff" opacity=".6"/><path d="M-60 -20 L-60 -50 M60 -20 L60 -50" stroke="#e9ecff" stroke-width="4"/><circle cx="-60" cy="-54" r="6" fill="#f5c451"/><circle cx="60" cy="-54" r="6" fill="#f5c451"/>`
+};
+function townMap(open){
+  const roads=`<g fill="none" stroke-linecap="round"><path d="M80 640 H1500 M620 120 V820 M1060 120 V820 M280 640 C280 420 450 250 620 250 H1360 M1060 600 C1200 600 1360 480 1360 300" stroke="#1f2862" stroke-width="40"/>
+  <path d="M80 640 H1500 M620 120 V820 M1060 120 V820 M280 640 C280 420 450 250 620 250 H1360 M1060 600 C1200 600 1360 480 1360 300" stroke="#3b4690" stroke-width="3" stroke-dasharray="18 18"/></g>`;
+  let blocks='';const B=[[120,120,200,160],[380,90,160,110],[720,90,180,90],[1140,80,140,110],[1420,420,140,180],[120,720,260,120],[720,700,240,140],[1180,700,260,140],[420,380,140,160],[760,360,200,170],[1180,380,120,140]];
+  B.forEach(([x,y,w,h],i)=>{blocks+=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="18" fill="#121a46"/>`;for(let k=0;k<4;k++)blocks+=`<rect x="${x+16+k*(w-32)/4}" y="${y+16}" width="${(w-32)/4-10}" height="${h-32-((i+k)%3)*14}" rx="4" fill="#1a2358"/>`;});
+  const river=`<path d="M0 470 C200 430 360 520 520 470 S820 380 960 440 S1300 520 1600 460" stroke="#1d3a8a" stroke-width="54" fill="none" opacity=".75"/><path d="M0 470 C200 430 360 520 520 470 S820 380 960 440 S1300 520 1600 460" stroke="#3f8cff" stroke-width="4" fill="none" opacity=".4" stroke-dasharray="6 22"/>`;
+  const park=`<path d="M780 400 C840 360 940 370 960 420 C980 480 900 520 830 510 C770 500 740 450 780 400Z" fill="#143a44"/><g fill="#1f5a5e"><circle cx="820" cy="430" r="18"/><circle cx="870" cy="410" r="22"/><circle cx="910" cy="450" r="18"/><circle cx="850" cy="470" r="16"/></g>`;
+  let pins='';
+  for(const k in PINS){const p=PINS[k];const on=open.includes(k);
+    pins+=`<g class="pin${on?' on':''}" data-v="${k}" transform="translate(${p.x} ${p.y})" ${on?'tabindex="0" role="button" aria-label="'+p.n+'"':''}>
+     ${on?'<circle class="ring" r="80" fill="none" stroke="#b49bff" stroke-width="4"/>':''}<circle r="90" fill="transparent"/>${ICON[k]}
+     <g transform="translate(0 78)"><rect x="${-p.n.length*9-18}" y="-22" width="${p.n.length*18+36}" height="40" rx="20" fill="${on?'#8b5cff':'#141c4a'}" stroke="${on?'#e9ecff':'#334190'}" stroke-width="2"/><text y="6" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="24" font-weight="700" fill="${on?'#fff':'#6a74a8'}">${p.n}</text></g></g>`;}
+  return `<svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" class="townmap"><rect width="1600" height="900" fill="#0a1030"/>${river}${roads}${blocks}${park}${pins}</svg>`;
+}
+
+/* ===== Scouted v2 story: days, venues and choices ===== */
+const CAST={
+  coach:{n:'Coach Raman',r:'Head coach',c:'#b49bff',i:'PR'},
+  mako:{n:'Mako',r:'Captain, shot caller',c:'#5aa2ff',i:'MK'},
+  jules:{n:'Jules',r:'Entry',c:'#ff8a7a',i:'JL'},
+  theo:{n:'Theo',r:'Support',c:'#3dd6b0',i:'TH'},
+  dee:{n:'Dee',r:'Best friend',c:'#f5c451',i:'DE'},
+  sam:{n:'Sam',r:'Analyst',c:'#a9b4d6',i:'SM'},
+  kai:{n:'Kai',r:'Project partner',c:'#e2c25a',i:'KA'},
+  ryder:{n:'Ryder',r:'Blaze Syndicate',c:'#ff9f43',i:'RY',remote:1},
+  host:{n:'Lou',r:'League stream host',c:'#c7d2fe',i:'LU'},
+  opp:{n:'Northgate_Ace',r:'All chat',c:'#7d86b3',i:'NG',remote:1},
+  rid:{n:'Ridgeline_Cap',r:'All chat',c:'#7d86b3',i:'RL',remote:1}
+};
+const RELS=['coach','mako','jules','theo','dee'];
+const SKILLS={clear:'Clear Messaging',listen:'Listening',story:'Storytelling',calm:'Influence'};
+const VALUES={positive:'Positive',purpose:'Purposeful',respect:'Respectful'};
+const VENUES={home:'Home',school:'School',library:'Library',academy:'Comets Academy',arena:'Arena',game:'In match',phone:'Phone',bus:'Bus',stream:'Stream desk'};
+const LABEL=k=>CAST[k]?CAST[k].n:(SKILLS[k]||VALUES[k]||k);
+
+const L=(s,x)=>({s,x});
+const N=x=>({s:'sys',x});
+const TUT=x=>({s:'sys',x,tut:1});
+const YOU=x=>({s:'you',x});
+const SC=o=>Object.assign({t:'scene'},o);
+const C=(time,q,o,to)=>({t:'choice',time,q,o,to});
+const O=(x,fx,then,mem,extra)=>Object.assign({x,fx:fx||{},then:then||[],mem},extra||{});
+const IF=(c,y,n)=>({t:'if',c,y,n});
+const DYN=f=>({t:'dyn',f});
+const FX=fx=>({t:'fx',fx});
+const FLAG=k=>({t:'do',f:s=>{s.f[k]=1}});
+const SCORE=(a,b,round)=>({t:'score',a,b,round});
+const G=(kind,d)=>Object.assign({t:'game',kind},d);
+const MAP=o=>Object.assign({t:'map'},o);
+const D=(v,x,fx,then,mem)=>({v,x,fx:fx||{},then:then||[],mem});
+
+/* minigames */
+const GAME_SDV={id:'sdv',skill:'clear',time:35,title:'Call builder: State, Describe, Verify',
+  sit:'Round 2 is about to start. You want the middle objective early. Mako calls the timing, Jules holds left, Theo backs you up. You all move at 1:30.',
+  slots:[
+   {k:'S',n:'State',h:'What are we doing?',o:[
+     {x:'Our goal this round: take the middle objective early.',q:2,w:'One clear goal. Everyone knows what the round is for.'},
+     {x:"Let's just play it out and see what happens.",q:0,w:'There is no goal here, so everyone makes up their own.'},
+     {x:"Middle. Fast. Don't mess it up like last round.",q:0,w:'Short, but it is a dig at the team, and "fast" is not a plan.'}]},
+   {k:'D',n:'Describe',h:'What does each person do?',o:[
+     {x:'Mako calls timing, Jules holds left, Theo backs me up. We move at 1:30.',q:2,w:'Every person has a job and there is a time. Nobody has to guess.'},
+     {x:'Everyone do your usual thing.',q:0,w:'Usual to who? This leaves the same gaps as last round.'},
+     {x:'Jules left, Theo with me.',q:1,w:'Good start, but there is no timing and nothing for Mako.'}]},
+   {k:'V',n:'Verify',h:'Check it landed',o:[
+     {x:"Theo, tell me where you're going and when we move.",q:2,w:'A repeat back shows you what Theo actually heard.'},
+     {x:'Do you get it?',q:0,w:'Most people just say yes. You learn nothing.'},
+     {x:'Cool? Cool.',q:0,w:"That isn't a check. It's a hope."}]}
+  ]};
+const GAME_MIRROR={id:'mirror',skill:'listen',show:4.5,time:12,who:'theo',title:'Listen, Mirror, Check',
+  sit:'Theo will make three calls. Each one shows for a few seconds, then it is gone. Listen fully, then pick the mirror and check you would say back.',
+  rounds:[
+   {call:'Rotate right on the next timer, then hold the long corridor.',ping:'Jules: did you see that clip I sent??',o:[
+     {x:'So we rotate right on the next timer and I hold the long corridor? Is that right?',q:2},
+     {x:'So we rotate left and hold the long corridor? Is that right?',q:0,w:'Wrong side. A mirror catches this before anyone moves.'},
+     {x:'Rotate right, then push the long corridor!',q:0,w:'"Hold" became "push", and there was no check.'},
+     {x:'Yep, got it.',q:0,w:'No mirror, so nobody knows what you heard.'}]},
+   {call:'Two on B, one on A. Save your shield for the retake.',ping:'Your phone buzzes on the desk.',o:[
+     {x:'So two on B, one on A, and I save my shield for the retake? Is that right?',q:2},
+     {x:'So two on A, one on B, and shield now? Is that right?',q:0,w:'The numbers flipped. Distractions make the gaps bigger.'},
+     {x:"So they're all on B? Is that right?",q:0,w:'You filled in the gap with a guess. Good that you checked, though.'},
+     {x:'Okay, using my shield now!',q:0,w:'You acted on half the call.'}]},
+   {call:"Don't chase. Fall back to spawn and wait for Mako.",ping:"Jules: I can chase, they're weak!",o:[
+     {x:"So no chasing, fall back to spawn and wait for Mako? Is that right?",q:2},
+     {x:'So chase with Jules, then wait for Mako?',q:0,w:'Jules was louder, so his idea got in. That is the assumption barrier.'},
+     {x:'So fall back and wait for Jules? Is that right?',q:0,w:'Right action, wrong person. The check would let Theo fix it.'},
+     {x:'Got it.',q:0,w:'No mirror, so nobody can tell if you heard it right.'}]}
+  ]};
+const GAME_STORY={id:'story',skill:'story',time:0,title:'Story Shaping',
+  sit:"Practise the story of the semi-final for next week's stream interview. Pick one line for each step so someone who was not there can picture it.",
+  slots:[
+   {k:'S',n:'Someone',h:'Who is it about?',o:[
+     {x:'Our team, the Bayside Comets, in our first ever semi-final.',q:2,w:'A clear main character the audience can follow.'},
+     {x:'Me, because I was easily the best player out there.',q:0,w:'It turns the team story into a brag.'},
+     {x:'Ridgeline.',q:1,w:"They are part of it, but it is your team's story to tell."}]},
+   {k:'W',n:'Want',h:'What did they want?',o:[
+     {x:"We wanted to take middle early, like we'd practised all week.",q:2,w:'Specific, and it links back to the training.'},
+     {x:'We wanted to win.',q:1,w:'True, but everyone wants that. It gives the listener nothing to picture.'},
+     {x:'Jules wanted to be a hero, as usual.',q:0,w:'That is blame dressed up as a story.'}]},
+   {k:'O',n:'Obstacle',h:'What got in the way?',o:[
+     {x:"Ridgeline stacked middle, we went in early, and Theo's call got lost in the noise.",q:2,w:'Specific, fair to everyone, and easy to picture.'},
+     {x:"Theo's call was late.",q:0,w:'It puts it all on one teammate, in public.'},
+     {x:'Stuff just went wrong.',q:0,w:'Vague. Nobody can learn from "stuff".'}]},
+   {k:'C',n:'Change',h:'What changed?',o:[
+     {x:'Now we mirror every call before we move, and this week we showed it.',q:2,w:'A real change you can point to. That is what makes a story stick.'},
+     {x:'We lost. Whatever.',q:0,w:'No change, no story.'},
+     {x:"We'll just try harder.",q:1,w:'Better than nothing, but "harder" is not a change anyone can see.'}]}
+  ]};
+const GAME_3P={id:'brief',skill:'calm',time:35,title:'Pre-game brief: 3P',
+  sit:'Two minutes before the grand final. The team is nervous and Mako cannot talk. Give a short brief: Purpose, Plan, Point.',
+  slots:[
+   {k:'P',n:'Purpose',h:'Why does this matter?',o:[
+     {x:"We've beaten this team before. Today is about playing the way we trained.",q:2,w:'Calm and sincere. It reminds people what they already do well.'},
+     {x:'If we lose this, the whole season was pointless.',q:0,w:'Pressure, not purpose. Nervous teams get tighter, not better.'},
+     {x:"It's a final, so, yeah.",q:0,w:'No reason to follow.'}]},
+   {k:'P',n:'Plan',h:'What do we do?',o:[
+     {x:'Take middle early, Theo calls rotates, we mirror every call.',q:2,w:'Short, clear jobs that the team has practised.'},
+     {x:'Just go hard and see.',q:0,w:'That is a mood, not a plan.'},
+     {x:"Everything we've practised all season, every single drill, plus watch their support, plus the timer...",q:1,w:'Right ideas, far too many. Nobody can hold all that in a final.'}]},
+   {k:'P',n:'Point',h:'One thing to remember',o:[
+     {x:'If it gets loud: one voice, mirror it, then move.',q:2,w:'One point, easy to remember under stress.'},
+     {x:"Don't mess up.",q:0,w:'Tells people what to fear, not what to do.'},
+     {x:'Remember the ten things on the whiteboard.',q:0,w:'Ten is not one. Limit it.'}]}
+  ]};
+const GAME_CALM={id:'calm',skill:'calm',time:28,title:'CALM reset',
+  sit:'Tactical pause, 30 seconds. Jules is yelling, Theo has gone silent, Mako cannot talk, and you can hear your own voice getting louder.',
+  slots:[
+   {k:'C',n:'Check',h:'Notice your own stress first',o:[
+     {x:'(Take one slow breath. Notice that your voice is loud too.)',q:2,w:'You cannot calm a team you are adding stress to.'},
+     {x:'(Go straight to telling everyone what they did wrong.)',q:0,w:'Skipping the check means your stress leads the call.'},
+     {x:'(Ignore how you feel and talk faster.)',q:0,w:'Faster is not calmer.'}]},
+   {k:'A',n:'Adjust',h:'Change your tone',o:[
+     {x:"Okay. We're fine. We're only two rounds behind.",q:2,w:'Slower and lower. People match the tone they hear.'},
+     {x:'EVERYONE CALM DOWN!',q:0,w:'Shouting "calm down" is never calm.'},
+     {x:'Ugh. Guys. Seriously.',q:0,w:'Frustration spreads just as fast as calm does.'}]},
+   {k:'L',n:'Limit',h:'One main point',o:[
+     {x:"One job this round: hold B together. That's it.",q:2,w:'One point. Everyone can hold it in their head.'},
+     {x:'Okay so B, but also watch A and mid and their shield and the timer...',q:0,w:'Too many words under stress means nobody hears any of them.'},
+     {x:'Hold B, and maybe also A.',q:1,w:'Close. "Maybe" makes people unsure.'}]},
+   {k:'M',n:'Make space',h:'Let others talk',o:[
+     {x:'Theo, what are you seeing?',q:2,w:'Asking brings in information you did not have.'},
+     {x:'Nobody talk except me.',q:0,w:'Control, not influence. You lose what your team knows.'},
+     {x:'Any questions? No? Good.',q:0,w:'That is not space. That is a closed door.'}]}
+  ]};
+
+const CARDS={
+ pro:{tag:'Prologue',title:'The Message',cards:[
+   {c:'t',lbl:'Valor principle',h:'Game time is training time',p:'Play with purpose. Set a goal, Play, then Review what happened.',steps:[['S','Set <em>a goal before you play</em>'],['P','Play <em>with that goal in mind</em>'],['R','Review <em>what worked and what to change</em>']]}],
+   reflect:'When does gaming help you, and when does it get in the way of other things?'},
+ c1:{tag:'Chapter 1 · Weeks 1 and 2',title:'Clear Signal',cards:[
+   {c:'k',lbl:'Week 1 · Knowledge',h:'Clear Messaging and Awareness',p:'A message moves from a sender to a receiver. Clear communication happens when what you meant matches what they heard.'},
+   {c:'t',lbl:'Week 2 · Tool',h:'State, Describe, Verify',p:'Use it when timing and teamwork matter.',steps:[['S','State <em>what we are doing</em>'],['D','Describe <em>what each person does</em>'],['V','Verify <em>ask them to repeat it back</em>']]}],
+   reflect:'Think of a time a message got lost. What did they need to hear that was different?'},
+ c2:{tag:'Chapter 2 · Weeks 3 and 4',title:'Heard, Not Listened',cards:[
+   {c:'k',lbl:'Week 3 · Knowledge',h:'Listening and Perspective',p:'Hearing is sound reaching you. Listening is working out what it means. Watch for assumptions, distractions, filling in gaps and thinking ahead.'},
+   {c:'t',lbl:'Week 4 · Tool',h:'Listen, Mirror, Check',p:"Don't guess. Check. Mirroring is not agreeing.",steps:[['L','Listen <em>focus fully on the message</em>'],['M','Mirror <em>"So what I heard is..."</em>'],['C','Check <em>"Is that right?"</em>']]}],
+   reflect:'When do you stop listening properly? Which barrier gets you most, at school or in a game?'},
+ c3:{tag:'Chapter 3 · Weeks 5 and 6',title:'The Story We Tell',cards:[
+   {c:'k',lbl:'Week 5 · Knowledge',h:'Storytelling: making it memorable',p:'A list of mistakes is hard to learn from. A story with a turning point sticks, and it moves the team on from blame.'},
+   {c:'t',lbl:'Week 6 · Tool',h:'Story Shaping',p:'Shape what happened so someone who was not there can follow it.',steps:[['S','Someone <em>who it is about</em>'],['W','Want <em>what they wanted</em>'],['O','Obstacle <em>what got in the way</em>'],['C','Change <em>what changed</em>']]}],
+   reflect:'Think of a game you lost. Tell it as a story with Someone, Want, Obstacle and Change.'},
+ c4:{tag:'Chapter 4 · Weeks 7 and 8',title:'Calm Under Pressure',cards:[
+   {c:'k',lbl:'Week 7 · Knowledge',h:'Influencing with good communication',p:'People follow calm, clear and sincere words. A short brief with a Purpose, a Plan and one Point helps a group act.'},
+   {c:'t',lbl:'Week 8 · Tool',h:'CALM for Influence',p:'Use it when things get tense.',steps:[['C','Check <em>your own stress first</em>'],['A','Adjust <em>your tone</em>'],['L','Limit <em>to one main point</em>'],['M','Make space <em>for others to talk</em>']]}],
+   reflect:'When have your words helped a group calm down or focus?'}
+};
+
+const CHAPTERS=[
+/* PROLOGUE */
+{key:'pro',ch:'Prologue',name:'The Message',tags:[],blurb:'A message from a coach at midnight. A big Friday.',nodes:[
+ SC({v:'phone',bg:'home',contact:'Coach Raman',day:'Thursday',time:'Night',place:'Your bedroom'}),
+ N('You have just finished your fourth ranked match of the night in Arclight, a 4v4 objective game. Your phone buzzes.'),
+ L('coach',`Hi {name}. I'm Priya Raman, head coach at Bayside Comets Academy.`),
+ L('coach',`I've watched a few of your matches. Your aim is sharp, but that's not what caught my eye.`),
+ L('coach',`Round 9 last night. You told three strangers exactly where to stand and when to move, and they did it. That's rare.`),
+ L('coach',`We have one academy trial spot. Saturday, 10 am, at the Comets base. Interested?`),
+ TUT('This is a choice. Pick how you reply. People will remember what you say.'),
+ C(0,'Reply to Coach Raman',[
+  O(`Yes! I'd love to. What should I bring?`,{coach:1,clear:1},[L('coach',`Your headset, your settings written down, and a good night's sleep. Which reminds me, it's nearly midnight.`)]),
+  O('Sorry, who is this? How did you find my profile?',{coach:1,respect:1},[L('coach',`Good question to ask. I messaged through the State Youth League scouting page. Check my name on the Comets website before you reply.`),YOU(`Okay, found you. Yes, I'm in!`)]),
+  O('lol sure. I carry every lobby anyway.',{coach:-1,respect:-1},[L('coach',`Confidence is good. Let's see how you go in a team that talks back.`)],'coach')
+ ]),
+ SC({v:'phone',bg:'home',contact:'Dee',day:'Thursday',time:'Night',place:'Your bedroom'}),
+ L('dee','are you STILL up'),
+ L('dee',`maths test tomorrow. you said you'd go through the practice sheet with me`),
+ TUT('Some choices are timed. When the bar runs out, you say nothing. People notice silence too.'),
+ C(10,'Reply to Dee',[
+  O(`Dee!! I just got scouted. Going to sleep now so I'm not useless tomorrow. Practice sheet at lunch?`,{dee:1,purpose:1},[L('dee',`WHAT. ok lunch. you're telling me everything`)]),
+  O(`One more game, then I'll do the sheet.`,{purpose:-1},[L('dee','you said that three games ago')]),
+  O(`Can't talk, big news, tell you tomorrow`,{},[L('dee','ok mysterious. night')])
+ ],O('(Leave it on read)',{dee:-1},[N('Read, 11:52 pm.')],'dee')),
+ SC({v:'school',day:'Friday',time:'Day',place:'School · Lunch',cast:['dee']}),
+ DYN(s=>[s.v.dee>=1?L('dee',`Okay. SCOUTED? Start from the beginning.`):s.v.dee<0?L('dee',`Oh, so you DO exist. You left me on read last night.`):L('dee',`So. What was the big news?`)]),
+ C(10,'Tell Dee about the trial',[
+  O(`A coach messaged me. Trial tomorrow at 10. I'm nervous, but I want to do it properly.`,{dee:1,clear:1},[L('dee',`Then do it properly. Sleep tonight. Eat breakfast. Write your settings down.`)]),
+  O(`Some academy wants me. No big deal, I'm basically pro now.`,{dee:-1,respect:-1},[L('dee',`Okay, pro. Do pros still need help with maths?`),N('Dee laughs, but it lands a bit flat.')],'dee'),
+  O(`Can't say yet. Might jinx it.`,{},[L('dee',`Fine. But I want details on Monday.`)])
+ ],O('(Shrug)',{},[L('dee','Wow. Thrilling. Okay.')])),
+ TUT('Between scenes you will see the town map. Lit places are open right now. Pick where to go and what to do.'),
+ MAP({day:'Friday',time:'Night',q:'The trial is tomorrow at 10 am. How do you spend tonight?',dest:[
+  D('home','Write your settings down, then get to bed early',{purpose:1,calm:1},[SC({v:'home',day:'Friday',time:'Night',place:'Your bedroom'}),N('Settings written. Bag packed. Asleep by 10:30.'),FLAG('rested')]),
+  D('home','Watch a pro match and note how the callers talk',{purpose:1,clear:1},[SC({v:'home',day:'Friday',time:'Night',place:'Your bedroom'}),N('You notice the best callers keep it short. One goal, who does what, then a check.'),N('You make yourself stop at 11.')]),
+  D('home','Grind ranked until it feels right',{purpose:-2},[SC({v:'home',day:'Friday',time:'Night',place:'Your bedroom'}),N('You win four and lose five. It is 2:14 am.'),FLAG('tired')])
+ ]}),
+ {t:'end'}
+]},
+
+/* CHAPTER 1 */
+{key:'c1',ch:'Chapter 1',name:'Clear Signal',tags:[['k','Wk 1'],['t','Wk 2']],blurb:'Trial day. A plan that nobody actually heard.',nodes:[
+ SC({v:'academy',day:'Saturday',time:'Morning',place:'Comets base',cast:['coach','mako','jules','theo']}),
+ N('The Comets base is an old shopfront on the main street. Five desks, a whiteboard, and a sign: Positive. Purposeful. Respectful.'),
+ DYN(s=>s.f.tired?[N('You yawn so hard during the welcome that Jules notices.'),L('jules','Late night? Big trial energy.')]:s.f.rested?[N('You slept well. Your hands feel steady.')]:[]),
+ L('coach',`Everyone, this is {name}, trialling with us today.`),
+ L('coach',`Mako is our captain and shot caller. Jules plays entry. Theo plays support. Sam is our analyst and will review the scrim with us after.`),
+ L('mako','Welcome. Grab the end desk.'),
+ L('theo','Hey.'),
+ N('Theo goes back to adjusting his headset.'),
+ L('jules',`So you're the one taking someone's spot?`),
+ C(8,'Answer Jules',[
+  O(`I'm here to earn a spot, not take one. Keen to see how you all play.`,{jules:1,mako:1,respect:1},[L('jules','Okay. Fair answer.'),N('Mako gives you a small nod.')]),
+  O(`Guess we'll find out.`,{jules:1},[L('jules','Ha. Okay. I like that.')]),
+  O(`If someone loses their spot, that's on them.`,{jules:-2,mako:-1,respect:-1},[L('jules','Wow. Okay.'),L('mako',`Let's keep it friendly, yeah?`)],'jules')
+ ],O('(Say nothing)',{theo:1},[N(`You let it go. Across the room, Theo almost smiles. He doesn't talk much either.`),L('jules','Strong silent type. Cool.')])),
+ SC({v:'game',day:'Saturday',time:'Morning',place:'Scrim vs Northgate · Dockside',opp:'NORTHGATE'}),SCORE(0,0,1),
+ L('mako',`Okay team, Dockside. We're going middle objective early this round, so Jules and...`),
+ L('jules',`THEY'RE PEEKING LEFT. LEFT LEFT LEFT.`),
+ L('mako','...hold left, and we go on...'),
+ L('jules','GO GO GO'),
+ N('Three of you move. Theo stays at spawn, unsure. You are halfway to middle.'),
+ L('theo','Wait, where are we going?'),
+ C(5,'Theo is lost',[
+  O('Middle! Now!',{},[N('Theo runs, but to the wrong middle. Dockside has two.')]),
+  O(`Theo, middle objective. I'm on your left, come to me.`,{clear:1,theo:1},[N('Theo finds you. Too late for the objective, but you are together.')]),
+  O('Keep up, Theo.',{theo:-1,positive:-1},[N('Theo goes quiet for the rest of the round.')],'theo')
+ ],O('(Say nothing)',{theo:-1},[N('Nobody answers him. Theo wanders off to the left side on his own.')])),
+ N('Northgate take the middle objective. Round lost.'),SCORE(0,1,2),
+ SC({v:'academy',day:'Saturday',time:'Morning',place:'Comets base · Tactical pause',cast:['coach','mako','jules','theo']}),
+ L('coach','Tactical pause. Headsets off for a second.'),
+ L('coach',`Think of a message as three parts. A sender with an idea. The message itself, the words and the tone. And a receiver who takes it in.`),
+ L('coach',`Mako had a plan. What did Theo actually hear?`),
+ C(0,'What went wrong?',[
+  O('Jules was yelling over Mako, so nobody heard the plan.',{jules:-1},[L('jules','Hey, they were peeking left!'),L('coach',`That's part of it. But blame doesn't fix the next round. What would?`),YOU(`...The plan only got said once, and nobody checked we all heard it.`)]),
+  O(`The plan got said once, half of it got drowned out, and nobody checked we'd all heard it.`,{clear:1,coach:1},[L('coach',`Exactly. What Mako meant and what Theo heard didn't match. That gap is where rounds go.`)],'coach'),
+  O(`Theo just wasn't paying attention.`,{theo:-1},[L('coach','Was he? Or was the signal unclear?'),L('theo',`...I couldn't hear Mako.`)],'theo')
+ ]),
+ L('coach',`Here's a tool for when accuracy matters. State, Describe, Verify.`),
+ L('coach',`State what we're doing. Describe what each person does. Then Verify. Don't ask "do you get it?" because everyone just says yes. Ask someone to repeat it back, and listen to the answer.`),
+ L('mako',`{name}, you call round two. Let's see it.`),
+ SC({v:'game',day:'Saturday',time:'Morning',place:'Scrim vs Northgate · Dockside',opp:'NORTHGATE'}),SCORE(0,1,2),
+ G('build',{data:GAME_SDV,say:true}),
+ DYN(s=>{const g=s.g.sdv||0;
+  if(g>=.8)return [L('theo','Backing you up, moving on 1:30.'),N('At 1:30 all four of you move together. The objective is yours before Northgate arrive.'),SCORE(1,1,3),N('Round won.'),FX({mako:1})];
+  if(g>=.5)return [L('theo','Uh, with you, I think?'),N('Most of the team moves on time. Jules is a few seconds late, but you take the objective, just.'),SCORE(1,1,3),N('Round won.')];
+  return [L('theo','Yep.'),N('Theo said yes, then headed the wrong way. Saying yes is not the same as understanding.'),SCORE(0,2,3),N('Round lost.')];}),
+ N('The scrim goes on. Your calls get tighter as the rounds go. Northgate take the map 13 to 11, but it is close.'),SCORE(11,13,'FINAL'),
+ SC({v:'game',mode:'allchat',day:'Saturday',time:'Morning',place:'Post-game · All chat',opp:'NORTHGATE'}),
+ L('opp','ez. academy kids lol'),
+ L('jules',`Oh, I'm typing something back.`),
+ C(7,'Jules is about to reply',[
+  O('Leave it, Jules. Type gg and we move on.',{positive:1,mako:1},[L('jules','Fine. gg.'),N('Mako gives you a quiet thumbs up.')]),
+  O('Do it. They deserve it.',{positive:-2,coach:-1},[N('Jules sends it. Coach Raman reads it over his shoulder and sighs.'),L('coach',`That's not who we are. We'll talk about it later.`)],'coach'),
+  O(`Type gg. Then let's look at the rounds where our calls worked.`,{positive:1,purpose:1,coach:1,jules:1},[L('jules','...yeah, okay. gg.'),L('coach',`That's the attitude.`)])
+ ],O('(Say nothing)',{positive:-1},[N('Jules sends something rude. The chat lights up. Nobody feels any better.')])),
+ SC({v:'academy',day:'Saturday',time:'Day',place:'Comets base · After the scrim',cast:['coach']}),
+ L('coach',`{name}. A word?`),
+ DYN(s=>[L('coach',s.v.clear>=3?`You made your calls clear, and you checked they landed. That's the part I can't teach in one day.`:`Your calls got better as the day went on. That's what I wanted to see.`)]),
+ L('coach',`We'd like you back. Training is Tuesday and Thursday nights, plus Saturday scrims. And school comes first. That's a team rule.`),
+ N('You are in the academy.'),
+ MAP({day:'Saturday',time:'Night',q:'You made the academy. It is Saturday night. What do you do with the news?',dest:[
+  D('home','Message Dee first',{dee:1},[SC({v:'phone',bg:'home',contact:'Dee',day:'Saturday',time:'Night',place:'Home'}),YOU('I MADE IT. Comets academy.'),L('dee','I KNEW IT. so proud of you. maths sheet still due monday though')]),
+  D('home','Post a hype clip: "academy kids? more like academy ELITE. ez"',{respect:-1,positive:-1,coach:-1},[SC({v:'home',day:'Saturday',time:'Night',place:'Your bedroom'}),N(`Northgate's captain replies with a laughing emoji. Coach Raman sees the post too.`)],'coach'),
+  D('home','Post: "First day with the Comets. Learned heaps. Grateful for the chance."',{positive:1,respect:1,coach:1,theo:1},[SC({v:'home',day:'Saturday',time:'Night',place:'Your bedroom'}),N('Coach Raman likes the post. So does Theo.')])
+ ]}),
+ {t:'end'}
+]},
+
+/* CHAPTER 2 */
+{key:'c2',ch:'Chapter 2',name:'Heard, Not Listened',tags:[['k','Wk 3'],['t','Wk 4']],blurb:'A group project, a quiet caller, and a lot of noise.',nodes:[
+ SC({v:'bus',day:'Tuesday',time:'Day',place:'The bus home'}),
+ N('You are watching a pro match clip with one earbud in. Dee messages.'),
+ SC({v:'phone',bg:'bus',contact:'Dee',day:'Tuesday',time:'Day',place:'The bus home'}),
+ L('dee','ok so about the grand final'),
+ L('dee',`mum says I can come IF it's on the 14th, but I have to be home before 6 for my sister's recital`),
+ L('dee',`and she can't drive me so I need a lift both ways`),
+ N(`The clip hits the best play of the match just as Dee's last message arrives.`),
+ C(10,'Reply to Dee',[
+  O('Yes!! See you there!',{listen:-1},[L('dee','...did you read the bit about the lift?'),N(`You didn't. Your brain filled in the gap with what it wanted to hear.`)]),
+  O(`So you can come on the 14th if you're home before 6, and you need a lift both ways? I'll ask Dad if we can drive you.`,{listen:2,dee:2},[L('dee',`YES. that's exactly it. thank you`),FLAG('lift')],'dee'),
+  O('Sorry, I was watching a clip. What did you say?',{listen:1},[L('dee','lol. scroll up. 14th, home before 6, need a lift'),YOU(`Got it. I'll ask Dad about the lift.`),FLAG('lift'),N('Not perfect, but asking beat guessing.')])
+ ],O('(Send a thumbs up)',{listen:-1,dee:-1},[L('dee','a thumbs up. ok.')],'dee')),
+ SC({v:'school',day:'Wednesday',time:'Day',place:'School · Science',cast:['kai']}),
+ N(`Group project time. Your partner Kai has just come back from Ms Okafor's desk. Your head is already at Thursday's training.`),
+ L('kai',`Okay. Ms Okafor said the poster is due Friday, the talk is Monday, and we need three sources each, not two.`),
+ C(8,'Kai just gave you the details',[
+  O('So poster Friday, talk Monday, and three sources each? Is that right?',{listen:1},[L('kai','Yep, exactly. Good, because I nearly wrote two.')]),
+  O('Yep, sweet.',{listen:-1},[N('Ten minutes later, all you can remember is "Friday".')]),
+  O('Wait, is the talk Friday too?',{listen:1},[L('kai','No, Monday. Poster is Friday. Three sources each.'),N('Asking beat guessing.')])
+ ],O('(Keep planning training in your head)',{listen:-1},[N(`Kai's words slide straight past. That was the "thinking ahead" barrier.`)])),
+ SC({v:'academy',day:'Thursday',time:'Evening',place:'Comets base · Training',cast:['coach','jules','theo'],noAdd:1}),
+ N('Mako has a sore throat and is joining from home on voice.'),
+ L('mako',`Theo's calling tonight. Give him room, yeah?`),
+ L('jules',`Theo? He talks like he's in a library.`),
+ C(7,'Jules has a go at Theo',[
+  O('His calls are good. We just have to actually listen.',{theo:1,respect:1},[L('theo','...thanks.')]),
+  O('Ha, true.',{theo:-1,jules:1,respect:-1},[N('Theo pulls his headset on and looks at his screen.')],'theo'),
+  O(`Then let's all turn our game sound down a bit.`,{listen:1,theo:1},[L('jules','Fine, fine.')])
+ ],O('(Say nothing)',{},[N(`The moment passes. Theo doesn't look up.`)])),
+ SC({v:'game',day:'Thursday',time:'Evening',place:'Training scrim · Glasshouse',opp:'ACADEMY B'}),SCORE(3,2,6),
+ N(`Theo's voice comes through, quiet and steady.`),
+ L('theo',`They're stacking B. Hold, don't push. Wait for my call.`),
+ L('jules','Pushing B? Okay, going!'),
+ N('Jules is already moving. You heard something about B. But was it push, or hold?'),
+ C(5,'Quick',[
+  O('Jules, wait. Theo, say again?',{listen:1,theo:1},[L('theo',`Hold. Don't push. Hold.`),N('Jules stops at the corner just in time. The other team walks into your crossfire.'),SCORE(4,2,7),N('Round won.'),FLAG('heldB')]),
+  O('Pushing with you, Jules!',{listen:-1},[N('You and Jules run straight into four players waiting at B.'),SCORE(3,3,7),N('Round lost.')]),
+  O('Follow Jules, he usually knows.',{listen:-1,theo:-1},[N('You follow Jules into a full stack at B.'),SCORE(3,3,7),N('Round lost.')])
+ ],O('(Freeze)',{},[N('You freeze. Jules goes in alone and is eliminated.'),SCORE(3,3,7),N('Round lost.')])),
+ SC({v:'academy',day:'Thursday',time:'Evening',place:'Comets base · Tactical pause',cast:['coach','jules','theo'],noAdd:1}),
+ L('coach','Pause. Jules, what did Theo say?'),
+ L('jules','Push B.'),
+ L('theo','I said hold.'),
+ L('coach',`Hearing is sound reaching you. Listening is working out what it means. Your brain loves to guess, so it hears what it expects.`),
+ L('coach',`{name}, which barrier got us there?`),
+ C(0,'Which barrier?',[
+  O('Assumptions. Jules decided what Theo meant before he finished.',{listen:1},[L('coach',`Yes. He'd made up his mind before Theo got to "hold".`)]),
+  O('Distractions. Game sound, and everyone talking at once.',{listen:1},[L('coach','A big one. Noise makes the gaps bigger.')]),
+  O('Filling in gaps. He heard "B" and guessed the rest.',{listen:1},[L('coach','Right. "B" plus a guess equals "push".')]),
+  O('Thinking ahead. He was planning his play instead of listening.',{listen:1},[L('coach',`Could be. When you're planning your reply, you've stopped listening.`)])
+ ]),
+ L('coach',`Honestly, it's usually a mix. So here's the fix. Listen, Mirror, Check.`),
+ L('coach',`Listen fully. Mirror it back: "So what I heard is..." Then Check: "Is that right?"`),
+ L('coach',`Mirroring isn't agreeing. It just shows you understood. And if the answer is no, you listen and adjust.`),
+ L('theo',`Can we try it? I'll make the calls.`),
+ SC({v:'game',day:'Thursday',time:'Evening',place:'Training scrim · Drill',opp:'ACADEMY B'}),
+ G('mirror',{data:GAME_MIRROR}),
+ DYN(s=>{const g=s.g.mirror||0;
+  return g>=.6?[N(`By the end of the night, Jules is mirroring calls without being asked. Theo's voice is getting louder, and steadier.`),FX({theo:1})]
+   :[N('It feels clunky. Accuracy always feels slower at the start. But the team is talking to each other now, not over each other.')];}),
+ SC({v:'phone',bg:'home',contact:'Theo',day:'Thursday',time:'Night',place:'Home'}),
+ L('theo','hey. thanks for listening tonight'),
+ L('theo','most people talk over me'),
+ C(10,'Reply to Theo',[
+  O(`Your calls were good. Keep making them. I'll back you.`,{theo:2,positive:1},[L('theo','ok. I will.')],'theo'),
+  O('No worries. See you Saturday.',{theo:1},[L('theo','see you')]),
+  O('Maybe just talk louder lol',{theo:-1},[L('theo','yeah. maybe.')])
+ ],O('(Leave it on read)',{theo:-1},[N('Theo goes offline a minute later.')],'theo')),
+ SC({v:'phone',bg:'home',contact:'Unknown number',day:'Thursday',time:'Night',place:'Home'}),
+ L('ryder',`Hey {name}. Ryder, team manager at Blaze Syndicate. Saw your clips from the Comets scrims.`),
+ L('ryder',`We pay our players. No curfews, no school rules, no "review sessions". Just play. Interested?`),
+ C(10,'Reply to Ryder',[
+  O(`Thanks, but I'm focused on the Comets right now.`,{purpose:1},[L('ryder',`Respect. Offer's open till your grand final.`)]),
+  O('Maybe. Tell me more.',{},[FLAG('ryder'),L('ryder',`Let's talk after your final. Don't mention it to your coach yet, yeah?`),N('Something about that last line sits funny.')])
+ ],O('(Leave it on read)',{},[L('ryder',`No rush. Offer's open till your grand final.`)])),
+ {t:'end'}
+]},
+
+/* CHAPTER 3 */
+{key:'c3',ch:'Chapter 3',name:'The Story We Tell',tags:[['k','Wk 5'],['t','Wk 6']],blurb:'A semi-final loss, a busy week, and a stream interview.',nodes:[
+ SC({v:'game',day:'Saturday',time:'Day',place:'Upper semi-final vs Ridgeline · Dockside',opp:'RIDGELINE'}),SCORE(11,12,24),
+ N('Map 3, last round. Ridgeline take the final objective.'),SCORE(11,13,'FINAL'),
+ N('Match over. The Comets drop to the lower bracket.'),
+ L('jules',`That's on me. I pushed too early. No, actually, Theo, your call was late. If you'd called it earlier...`),
+ L('theo','...'),
+ C(7,'The blame is starting',[
+  O(`It wasn't all you, Jules, and it wasn't Theo. We all missed the rotate. We fix it together.`,{jules:1,theo:1,positive:1},[L('jules','...yeah. Okay.')],'jules'),
+  O(`Stop. Blaming won't win the next match.`,{positive:1},[L('jules','Fine.'),N('It works, but it lands a bit sharp. Jules goes quiet.')]),
+  O('Yeah, Theo was late.',{theo:-2,positive:-1},[N(`Theo takes his headset off and doesn't put it back on.`)],'theo')
+ ],O('(Say nothing)',{theo:-1,positive:-1},[N('Nobody says anything. Jules keeps going. Theo just stares at his screen.')])),
+ SC({v:'academy',day:'Sunday',time:'Morning',place:'Comets base · Review',cast:['sam','coach','jules','theo']}),
+ L('sam',`Okay. Set, Play, Review. We Set a goal for that map: take middle early. We Played. Now we Review. One round, properly.`),
+ L('sam','Which round do we look at?'),
+ C(0,'Pick a round to review',[
+  O(`Round 22. That's where we lost the lead and the plan fell apart.`,{purpose:2,coach:1},[L('sam',`Good pick. That's the round that teaches us the most.`)],'coach'),
+  O('Round 15, my triple. That clip is so good.',{purpose:-1},[L('sam','It is a great clip. But what does it teach us for next week?'),YOU('...Okay. Round 22.')]),
+  O('Can we skip review and just play more matches?',{purpose:-2,coach:-1},[L('coach','More matches without review is just practising the same mistakes. Game time is training time.'),YOU('Fair. Round 22, then.')],'coach')
+ ]),
+ L('sam',`Round 22. We go in early, Theo's call comes after the fight has already started, and we never regroup.`),
+ L('coach',`Notice how we talk about it, though. A list of mistakes is hard to learn from. A story sticks.`),
+ L('coach',`Someone, Want, Obstacle, Change. Who it's about, what they wanted, what got in the way, and what changed.`),
+ L('coach',`The league wants one player for the stream interview after the lower bracket final next Saturday. I'd like it to be you. Shape the story now, so it's ready.`),
+ G('build',{data:GAME_STORY}),
+ SC({v:'phone',bg:'school',contact:'Dee',day:'Monday',time:'Day',place:'School'}),
+ L('dee','exam week is next week btw'),
+ L('dee',`study group thursday at the library? you said you'd come`),
+ N('Thursday is a training night. You also wanted to grind ranked every night before the final.'),
+ C(10,'Reply to Dee',[
+  O(`Yes. I'll ask Coach to swap Thursday training for Wednesday. Training Mon, Wed, Sat. Study Thursday.`,{purpose:2,dee:1,coach:1},[L('dee','look at you with an actual plan'),FLAG('promised')],'dee'),
+  O(`Can't. Ranked every night until the final.`,{purpose:-2,dee:-1},[L('dee','ok. good luck with the exam I guess')],'dee'),
+  O(`Maybe? I'll see how I feel.`,{},[L('dee',`that's a no then`)])
+ ],O('(Leave it on read)',{dee:-1},[N('Dee goes offline.')])),
+ MAP({day:'Thursday',time:'Evening',q:'Thursday, 6 pm. Exams are next week and the lower bracket final is on Saturday. Where do you go?',dest:[
+  D('library','Study group with Dee',{purpose:1,dee:1},[SC({v:'library',day:'Thursday',time:'Evening',place:'Library · Study group',cast:['dee']}),DYN(s=>[L('dee',s.f.promised?'You actually came. I owe you hot chips.':`Oh! You came. Okay, sit. We're on chapter 6.`)]),N('Two hours later, the exam feels possible. Your brain feels fresh for Saturday, too.')]),
+  D('academy','Extra review with Sam: watch round 22 again',{purpose:1,story:1},[SC({v:'academy',day:'Thursday',time:'Evening',place:'Comets base · Review room',cast:['sam']}),L('sam',`Round 22, slowed down. Watch Theo's call. It comes two seconds after the fight starts. That's the whole story.`),DYN(s=>s.f.promised?[FX({dee:-1}),SC({v:'phone',bg:'academy',contact:'Dee',day:'Thursday',time:'Evening',place:'Comets base'}),L('dee','library? no?')]:[])]),
+  D('home','Ranked until midnight',{purpose:-1},[SC({v:'home',day:'Thursday',time:'Night',place:'Your bedroom'}),N('You climb one rank and lose it again by 11:40.'),DYN(s=>s.f.promised?[FX({dee:-2}),SC({v:'phone',bg:'home',contact:'Dee',day:'Thursday',time:'Night',place:'Home'}),L('dee','saved you a seat. guess not.')]:[])])
+ ]}),
+ SC({v:'game',day:'Saturday',time:'Day',place:'Lower bracket final vs Ridgeline',opp:'RIDGELINE'}),SCORE(1,1,'MAP 3'),
+ N('Saturday. Ridgeline again. This time the rotate holds, and every call gets mirrored.'),SCORE(2,1,'FINAL'),
+ L('mako',`WE'RE IN THE GRAND FINAL!`),
+ SC({v:'stream',day:'Saturday',time:'Day',place:'Arena · Stream desk',cast:['host']}),
+ L('host','Congratulations! Last week this same team beat you. What changed?'),
+ DYN(s=>{const p=s.picks.story||[];const g=s.g.story||0;const out=[YOU(p.join(' ')||'Um. We just did better?')];
+  if(g>=.75)out.push(L('host',`That's a great story. People at home can picture exactly what happened.`),FX({story:1,coach:1}));
+  else if(g>=.5)out.push(L('host','Ha, okay! Sounds like you learned a lot.'));
+  else out.push(N('The host waits for more. The chat on stream scrolls past: "what did they even say?"'));
+  return out;}),
+ L('host','And what do you think of Ridgeline?'),
+ C(8,'Answer on stream',[
+  O(`They're a great team. They beat us fair last week, and they made us better.`,{respect:2,positive:1},[L('host','Classy. Love it.')]),
+  O('They talk a lot for a team that just lost.',{respect:-2,coach:-1},[N('The stream chat goes wild. Coach Raman, watching from the side, does not look happy.')],'coach'),
+  O('Honestly, I just focus on our team.',{respect:1},[L('host','Fair enough!')])
+ ],O('(Say nothing)',{},[L('host','Lost for words! Big day.')])),
+ {t:'end'}
+]},
+
+/* CHAPTER 4 */
+{key:'c4',ch:'Chapter 4',name:'Calm Under Pressure',tags:[['k','Wk 7'],['t','Wk 8']],blurb:'Grand final. Mako has lost his voice. You are calling.',nodes:[
+ SC({v:'home',day:'Saturday',time:'Morning',place:'Your bedroom · Grand final day'}),
+ N('You have been awake since 6. Your jersey is on the chair. Your phone buzzes.'),
+ SC({v:'phone',bg:'home',contact:'Dee',day:'Saturday',time:'Morning',place:'Home'}),
+ DYN(s=>s.f.lift?[L('dee',`GRAND FINAL DAY. your dad is picking me up at 12, I'm home by 6, all sorted. see you there!!`),FLAG('deeThere')]:[L('dee',`good luck today!! I couldn't get a lift in the end, so I'm watching the stream`)]),
+ C(8,'Reply to Dee',[
+  O(`Thanks. Bit nervous, honestly.`,{dee:1,calm:1},[L('dee',`nervous is normal. breathe. you've got the tools`)]),
+  O(`Can't wait. Wave if you see me freaking out.`,{dee:1},[L('dee','I will wave SO hard')])
+ ],O('(Leave it on read)',{dee:-1},[N('You put the phone in your bag.')])),
+ SC({v:'academy',day:'Saturday',time:'Morning',place:'Comets base · Before the final',cast:['coach','mako','jules','theo']}),
+ N('Mako walks in wearing a scarf and holding a whiteboard marker.'),
+ N('He writes on the whiteboard: VOICE GONE. FLU. SORRY.'),
+ L('coach',`Mako can play, but he can't call. I want you to be shot caller today, {name}.`),
+ DYN(s=>[s.v.jules<0?L('jules','Them? Seriously?'):L('jules',`Let's go. You've got this.`)]),
+ DYN(s=>s.v.theo>=3?[L('theo',`I'll feed you info. Whatever you need.`)]:[N(`Theo nods, but doesn't say anything.`)]),
+ L('coach',`Good leaders don't shout louder. They help the team focus. People follow calm, clear, sincere words.`),
+ L('coach',`Before we start, give the team a brief. Three P's. Purpose, Plan, Point.`),
+ G('build',{data:GAME_3P,say:true}),
+ DYN(s=>{const g=s.g.brief||0;
+  return g>=.8?[N('Shoulders drop. Jules stops bouncing his knee. Mako gives you two thumbs up.'),FX({mako:1,jules:1})]
+   :g>=.5?[N('The team nods. Not everyone looks settled, but they know the plan.')]
+   :[L('jules','So... what are we actually doing?'),N('The brief made people more nervous, not less.')];}),
+ SC({v:'phone',bg:'arena',contact:'Ryder',day:'Saturday',time:'Day',place:'Arena · Backstage'}),
+ L('ryder',`Big day! Quick one. My offer ends tonight. I need an answer before your match.`),
+ C(8,'Ryder wants an answer now',[
+  O(`I'm not thinking about that right now. After the match.`,{purpose:1,calm:1},[N('You put your phone in your bag.')]),
+  O(`Okay, quick. What's the offer?`,{purpose:-1,calm:-1},[L('ryder','Three times what the Comets will ever pay. Your own stream deal. Practice when you want, no coach telling you to sleep...'),N('By the time you finish reading, the match is about to start and your head is somewhere else.')])
+ ],O('(Put the phone away)',{},[N('You flip the phone over. Later.')])),
+ SC({v:'arena',day:'Saturday',time:'Day',place:'Arena · Walkout'}),
+ DYN(s=>s.f.deeThere?[N('The lights hit the stage. In the third row, someone is waving a sign with your handle spelled wrong. Dee made it.')]:[N('The lights hit the stage. The crowd is louder than anything you have heard.')]),
+ SC({v:'game',day:'Saturday',time:'Day',place:'Grand final vs Ridgeline · Glasshouse',opp:'RIDGELINE'}),SCORE(9,11,21),
+ N('One map each. Map 3 decides it. Ridgeline lead 11 to 9 and have won three rounds in a row.'),
+ L('jules',`WHY IS NOBODY ON B?? I'M ALONE AGAIN!`),
+ N(`Mako taps his desk hard. He can't speak.`),
+ L('jules','THIS IS HOPELESS.'),
+ N('You can hear your own voice getting louder. Everyone is talking. Nobody is listening.'),
+ N('Coach Raman calls a tactical pause. Thirty seconds.'),
+ G('build',{data:GAME_CALM,say:true}),
+ DYN(s=>{const g=s.g.calm||0;
+  if(g<.5)return [N('The pause ends with more noise than it started with. Jules is still yelling.')];
+  if(s.v.theo>=2||s.f.heldB)return [L('theo',`{name}. When they're ahead, they leave A empty and stack B. Every time.`),FLAG('aInfo')];
+  return [L('theo','I... nothing. Sorry.'),N(`Theo looks like he wants to say something. Maybe he doesn't trust that anyone will listen.`)];}),
+ IF(s=>s.f.aInfo,[
+  C(6,'Theo just gave you something',[
+   O(`So when they're ahead, A is empty and they stack B? Is that right?`,{listen:1,theo:1},[L('theo',`That's right.`),YOU('Our goal: take A. Jules and I go first, Theo and Mako follow on my call. Theo, repeat it back?'),L('theo','A. You and Jules first, me and Mako on your call.'),FLAG('aCall')]),
+   O(`Not now, Theo. Just hold B.`,{theo:-1},[N('Theo goes quiet again.')],'theo')
+  ],O('(Say nothing)',{},[N('The pause ends before you answer.')]))
+ ]),
+ DYN(s=>{
+  const sc=((s.g.brief||0)+(s.g.calm||0))/2+(s.f.aCall?.35:0)+(s.v.calm>=4?.05:0);
+  s.f.won=sc>=.85?1:0;
+  if(s.f.won)return [
+   N(s.f.aCall?`Round 21. You take A while Ridgeline stack B. They don't see it coming.`:'Round 21. The team holds B together, one voice at a time.'),SCORE(10,11,22),
+   N('Round 22. Round 23. Calm calls, mirrored back, every time.'),SCORE(12,11,24),
+   N('13 to 11. The Bayside Comets win the State Youth League grand final.'),SCORE(13,11,'FINAL'),
+   L('jules','NO WAY. NO WAY!'),N(`Mako can't shout, so he just grabs your shoulder and shakes it.`)];
+  return [
+   N('The team settles. Round 21 is yours. Round 22 too.'),SCORE(11,11,23),
+   N('But Ridgeline adjust. Round 24 goes to them.'),
+   N('13 to 11, Ridgeline. The Comets lose the grand final by two rounds.'),SCORE(11,13,'FINAL'),
+   N('Nobody yells. Jules takes a long breath. Theo pats your desk.')];}),
+ SC({v:'game',mode:'allchat',day:'Saturday',time:'Day',place:'Post-match · All chat',opp:'RIDGELINE'}),
+ DYN(s=>[L('rid',s.f.won?`gg Comets. That was the best final we've ever played.`:`gg Comets. That was the toughest final we've ever played.`)]),
+ C(8,'Reply in all chat',[
+  O('gg Ridgeline. That was awesome. See you next season.',{positive:1,respect:1},[N(`Ridgeline's captain sends a heart. A few people in the stream chat copy it.`)]),
+  O(s=>s.f.won?`Told you we'd get you.`:'Whatever. Lucky.',{positive:-1,respect:-1},[N('The stream chat turns on you. Coach Raman reads it, and says nothing, which is worse.')],'coach')
+ ],O('(Type gg)',{positive:1},[N('Simple. Respectful. Done.')])),
+ IF(s=>s.f.deeThere,[
+  SC({v:'arena',day:'Saturday',time:'Day',place:'Arena · After the match',cast:['dee']}),
+  DYN(s=>[L('dee',s.f.won?`YOU WON. I screamed so loud the person next to me moved seats.`:`That was SO close. I've never been that stressed watching anything.`)]),
+  L('dee',`Okay, Dad's here. Home by 6, like I promised Mum. Text me tonight!`)
+ ]),
+ SC({v:'academy',day:'Saturday',time:'Night',place:'Comets base · That night',cast:['coach','mako','jules','theo']}),
+ DYN(s=>{const out=[];
+  const strong=s.v.coach>=2&&(s.v.clear+s.v.listen+s.v.story+s.v.calm)>=10;
+  s.f.offer=strong?'main':'academy';
+  out.push(L('coach',s.f.won?`Champions. I'm still a bit stunned.`:`Second in the state, in your first season. I'm proud of all of you.`));
+  if(strong)out.push(L('coach',`{name}, I want you on the main roster next season. As a shot caller. Not because of your aim. Because people listen when you talk, and you listen back.`));
+  else out.push(L('coach',`{name}, I'd like you back in the academy next season, as deputy caller next to Mako. You've grown a lot. Let's keep building it.`));
+  return out;}),
+ N('Your phone buzzes. Ryder.'),
+ L('ryder','So? Blaze Syndicate. Last chance. Big money, no rules.'),
+ C(0,'Choose your next step',[
+  O(s=>s.f.offer==='main'?'Take the main roster spot with the Comets.':'Stay with the Comets and keep building.',{},[FLAG('stay'),L('ryder','Your call. Good luck.')]),
+  O('Tell Coach Raman about the offer, honestly, then decide with the team.',{respect:1,coach:1},[FLAG('stay'),FLAG('honest'),L('coach','Thanks for telling me. That tells me more about you than any match did.'),L('coach',`The door's open, here, whatever you pick. But I'd love you to stay.`),YOU(`I'm staying.`)],'coach'),
+  O('Sign with Blaze Syndicate.',{},[FLAG('blaze'),L('ryder','Knew it. Welcome to the big time.')])
+ ]),
+ {t:'final'}
+]}
+];
+
+/* ===== Scouted v2 engine ===== */
+const fresh=()=>({name:'Nova',ch:0,v:{coach:0,mako:0,jules:0,theo:0,dee:0,clear:0,listen:0,story:0,calm:0,positive:0,purpose:0,respect:0},f:{},g:{},log:[],picks:{}});
+let S=fresh();
+let SET={timer:'normal',text:'normal'};
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const savedSet=store.get('scouted2.settings');if(savedSet)SET=Object.assign(SET,savedSet);
+const tmul=()=>SET.timer==='relaxed'?2:1;
+const timersOn=()=>SET.timer!=='off';
+const reduced=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const nm=x=>typeof x==='function'?x(S):String(x).replace(/\{name\}/g,S.name);
+
+const $=id=>document.getElementById(id);
+const el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e;};
+const panel=$('panel'),stage=$('stage'),dlg=$('dlg');
+const head=k=>{if(LOOK[k])return sprite(k,{head:true,headset:false});return '';};
+function avatarEl(k,cls){const a=el('div',cls||'av');if(LOOK[k])a.innerHTML=head(k);else{a.textContent=CAST[k]?CAST[k].i:'?';a.style.background=CAST[k]?CAST[k].c:'var(--panel2)';}return a;}
+
+/* ---------- log ---------- */
+const LOG=[];
+function logPush(e){LOG.push(e);if(LOG.length>400)LOG.shift();}
+
+/* ---------- scene ---------- */
+const TIMES=['Morning','Day','Evening','Night'];
+let SCN={v:null,mode:'room',bgV:null,cast:[],noAdd:false,contact:null};
+function setBg(v){if(SCN.bgV===v)return;SCN.bgV=v;$('bg').innerHTML=(BG[v]||BG.home)();}
+function setTime(day,time){
+  if(time){$('tint').className='tint '+time;[...$('hudCycle').children].forEach((d,i)=>d.className=i===TIMES.indexOf(time)?'on':'');}
+  $('hudDayTxt').textContent=(day?day.slice(0,3):'')+(time?' · '+time:'');
+}
+function renderCast(list){
+  const box=$('cast');const keep=new Set(list);
+  [...box.children].forEach(c=>{if(!keep.has(c.dataset.k))c.remove();});
+  list.forEach((k,i)=>{let s=box.querySelector('[data-k="'+k+'"]');if(!s){s=el('div','spr');s.dataset.k=k;s.innerHTML=sprite(k);}box.append(s);});
+  SCN.cast=list.slice();
+}
+function setTalk(k){[...$('cast').children].forEach(c=>{c.classList.toggle('talk',c.dataset.k===k);});
+  [...$('team').children].forEach(c=>c.classList.toggle('live',c.dataset.k===k));}
+function buildTeam(){const t=$('team');t.replaceChildren();
+  [['you',S.name],['mako','Mako'],['jules','Jules'],['theo','Theo']].forEach(([k,n])=>{const c=el('div','tm');c.dataset.k=k;
+   const h=el('div','hd');if(k==='you'){h.textContent=S.name.slice(0,2).toUpperCase();h.style.background='var(--violet)';h.style.color='#fff';}else h.innerHTML=head(k);
+   const mic=el('span','mic');mic.append(el('i'),el('i'),el('i'));c.append(h,el('span',null,n),mic);t.append(c);});}
+function setScene(n){
+  const v=n.v;SCN.v=v;SCN.noAdd=!!n.noAdd;
+  const mode=v==='phone'?'phone':v==='game'?(n.mode==='allchat'?'allchat':'voice'):'room';SCN.mode=mode;
+  setBg(v==='phone'?(n.bg||SCN.bgV||'home'):v);
+  setTime(n.day,n.time);
+  $('hudVenue').textContent=nm(n.place||VENUES[v]||'');
+  $('mapwrap').hidden=true;
+  $('phone').hidden=mode!=='phone';$('ghud').hidden=!(mode==='voice'||mode==='allchat');$('igchat').hidden=mode!=='allchat';
+  if(mode==='allchat')$('igMsgs').replaceChildren();
+  if(mode==='voice'||mode==='allchat'){buildTeam();if(n.opp)$('opp').textContent=n.opp;}
+  if(mode==='phone'){if(SCN.contact!==n.contact){$('phMsgs').replaceChildren();}SCN.contact=n.contact;$('phName').textContent=n.contact||'Messages';
+    const ck=Object.keys(CAST).find(k=>CAST[k].n===n.contact)||(n.contact==='Unknown number'||n.contact==='Ryder'?'ryder':null);
+    const av=$('phAv');av.innerHTML='';if(ck&&LOOK[ck])av.innerHTML=head(ck);else{av.textContent='?';av.style.background='var(--panel2)';}
+    dlg.hidden=true;}else SCN.contact=null;
+  renderCast(mode==='room'?(n.cast||[]):[]);
+  if(mode!=='phone'){dlg.hidden=true;}
+  logPush({sc:nm(n.place||VENUES[v]),day:n.day,time:n.time});
+}
+function setScore(n){$('sc1').textContent=n.a;$('sc2').textContent=n.b;$('rd').textContent=typeof n.round==='number'?'ROUND '+n.round:n.round;}
+
+/* ---------- lines ---------- */
+let typing=null;
+function typeInto(target,text,onDone){
+  if(typing){clearInterval(typing.id);}
+  const spr=$('cast').querySelector('.spr.talk');if(spr)spr.classList.add('typing');
+  const fin=()=>{if(!typing)return;clearInterval(typing.id);target.textContent=text;typing=null;if(spr)spr.classList.remove('typing');onDone&&onDone();};
+  if(reduced||SET.text==='instant'){target.textContent=text;if(spr)spr.classList.remove('typing');onDone&&onDone();return;}
+  let i=0;target.textContent='';const step=SET.text==='fast'?4:2;
+  typing={fin,id:setInterval(()=>{i+=step;target.textContent=text.slice(0,i);if(i>=text.length)fin();},16)};
+}
+function showDlg(who,text,kind){
+  dlg.hidden=false;dlg.className='dlg'+(kind?' '+kind:'');
+  const dn=$('dName');dn.replaceChildren();
+  if(who==='you'){dn.style.color='var(--violet2)';dn.append(document.createTextNode(S.name));}
+  else if(who&&CAST[who]){dn.style.color=CAST[who].c;dn.append(document.createTextNode(CAST[who].n));dn.append(el('small',null,CAST[who].r));}
+  typeInto($('dText'),text);
+}
+function addLine(n,quiet){
+  const x=nm(n.x);const silent=n.s==='you'&&/^\(.*\)$/.test(x);
+  logPush({s:n.s,x});
+  if(quiet)return;
+  const mode=SCN.mode;
+  if(mode==='phone'){
+    const box=$('phMsgs');
+    const add=()=>{const b=el('div','bub '+(n.s==='sys'?'note'+(n.tut?' tut':''):n.s==='you'?'out'+(silent?' silent':''):'in'),x);box.append(b);box.scrollTop=box.scrollHeight;};
+    if(n.s!=='sys'&&n.s!=='you'&&!reduced){const d=el('div','typing-dots');d.append(el('i'),el('i'),el('i'));box.append(d);box.scrollTop=box.scrollHeight;
+      typing={fin:()=>{if(!typing)return;clearTimeout(typing.id);d.remove();typing=null;add();},id:setTimeout(()=>typing&&typing.fin(),520)};}
+    else add();
+    return;
+  }
+  if(mode==='allchat'&&CAST[n.s]&&CAST[n.s].remote&&n.s!=='ryder'){const l=el('div','l');l.append(el('b',null,'[ALL] '+CAST[n.s].n+': '),document.createTextNode(x));$('igMsgs').append(l);dlg.hidden=true;setTalk(null);return;}
+  if(n.s==='sys'){setTalk(null);showDlg(null,x,n.tut?'sys tut':'sys');return;}
+  if(n.s==='you'){setTalk('you');showDlg('you',silent?x.replace(/^\((.*)\)$/,'($1)'):x,'you');return;}
+  if(mode==='room'&&LOOK[n.s]&&!SCN.noAdd&&!CAST[n.s].remote&&!SCN.cast.includes(n.s)){
+    let list=SCN.cast.slice();if(list.length>=4)list.shift();list.push(n.s);renderCast(list);}
+  setTalk(n.s);showDlg(n.s,x);
+}
+
+/* ---------- runner ---------- */
+let Q=[],keyHandler=null,timerId=null,tapHandler=null;
+function clearPanel(){panel.replaceChildren();keyHandler=null;tapHandler=null;stage.classList.remove('tap');if(timerId){cancelAnimationFrame(timerId);timerId=null;}}
+function step(){
+  clearPanel();
+  if(!Q.length)return;
+  const n=Q.shift();
+  if(n.t==='scene'){setScene(n);return step();}
+  if(n.t==='score'){setScore(n);return step();}
+  if(n.s){addLine(n);return waitTap();}
+  if(n.t==='choice')return showChoice(n);
+  if(n.t==='map')return showMap(n);
+  if(n.t==='if'){Q.unshift(...((n.c(S)?n.y:n.n)||[]));return step();}
+  if(n.t==='dyn'){Q.unshift(...(n.f(S)||[]));return step();}
+  if(n.t==='fx'){applyFx(n.fx,true);return step();}
+  if(n.t==='do'){n.f(S);return step();}
+  if(n.t==='game')return (n.kind==='mirror'?gameMirror:gameBuild)(n);
+  if(n.t==='end')return showRecap();
+  if(n.t==='final')return showFinal();
+}
+function advance(){if(typing){typing.fin();return;}step();}
+function waitTap(){
+  const b=el('button','cont','Continue   (space)');b.type='button';b.onclick=advance;panel.append(b);
+  stage.classList.add('tap');tapHandler=advance;
+  keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();advance();}};
+}
+stage.addEventListener('click',e=>{if(e.target.closest('.pin'))return;if(tapHandler)tapHandler();});
+function applyFx(fx,announce){
+  for(const k in fx){S.v[k]=(S.v[k]||0)+fx[k];}
+  if(!announce)return;
+  Object.entries(fx).filter(([k,v])=>RELS.includes(k)&&v>0).forEach(([k])=>toast(k,CAST[k].n+' liked that.'));
+}
+function startTimer(sec,onDone){
+  const bar=el('div','timer');const i=el('i');bar.append(i);
+  const total=sec*tmul()*1000;const t0=performance.now();
+  const tick=now=>{const f=Math.max(0,1-(now-t0)/total);i.style.transform='scaleX('+f+')';bar.classList.toggle('low',f<.3);
+    if(f<=0){timerId=null;onDone();return;}timerId=requestAnimationFrame(tick);};
+  timerId=requestAnimationFrame(tick);return bar;
+}
+function choose(n,o,silent){
+  const say=o.say?nm(o.say):nm(o.x);
+  applyFx(o.fx);
+  S.log.push({ch:S.ch,q:nm(n.q),a:say,fx:o.fx,v:o.v});
+  if(o.mem)toast(o.mem,CAST[o.mem].n+' will remember that.');
+  Q.unshift(...(o.then||[]));
+  return say;
+}
+function showChoice(n){
+  if(typing)typing.fin();
+  const timed=n.time>0&&timersOn();
+  const hd=el('div','gm-head');hd.append(el('div','q',nm(n.q)));
+  if(n.time>0)hd.append(el('span','scoretxt',timed?'Timed':'Timer off'));
+  panel.append(hd);
+  const to=n.to||O('(Say nothing)',{});
+  let done=false;
+  const pick=(o,silent)=>{if(done)return;done=true;clearPanel();
+    const say=choose(n,o,silent);
+    addLine({s:'you',x:say});
+    waitTap();
+  };
+  if(timed)panel.append(startTimer(n.time,()=>pick(to,true)));
+  const grid=el('div','opts');
+  n.o.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,nm(o.x)));b.onclick=()=>pick(o);grid.append(b);});
+  panel.append(grid);
+  keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=n.o.length){e.preventDefault();pick(n.o[k-1]);}};
+}
+function showMap(n){
+  setTime(n.day,n.time);$('hudVenue').textContent='Town map';
+  dlg.hidden=true;$('phone').hidden=true;$('ghud').hidden=true;$('igchat').hidden=true;renderCast([]);
+  const open=[...new Set(n.dest.map(d=>d.v))];
+  const mw=$('mapwrap');mw.innerHTML=townMap(open);
+  const note=el('div','mapnote',(n.day||'')+' · '+(n.time||'')+'  ·  '+(n.time==='Night'?'Most places are closed':'Pick a lit place'));mw.append(note);mw.hidden=false;
+  panel.append(el('div','q',nm(n.q)));
+  const grid=el('div','opts');const btns=[];
+  let done=false;
+  const pick=d=>{if(done)return;done=true;clearPanel();mw.hidden=true;choose(n,d);step();};
+  n.dest.forEach((d,i)=>{const b=el('button','opt');b.type='button';b.dataset.v=d.v;const sp=el('span');sp.append(el('span','vt',PINS[d.v]?PINS[d.v].n:VENUES[d.v]),document.createTextNode(nm(d.x)));
+    b.append(el('kbd',null,String(i+1)),sp);b.onclick=()=>pick(d);
+    b.onmouseenter=b.onfocus=()=>{mw.querySelectorAll('.pin').forEach(p=>p.classList.toggle('sel',p.dataset.v===d.v));};grid.append(b);btns.push(b);});
+  panel.append(grid);
+  mw.querySelectorAll('.pin.on').forEach(p=>{const act=()=>{const mine=n.dest.filter(d=>d.v===p.dataset.v);if(mine.length===1)return pick(mine[0]);
+      btns.forEach(b=>b.classList.toggle('hl',b.dataset.v===p.dataset.v));const f=btns.find(b=>b.dataset.v===p.dataset.v);f&&f.focus();};
+    p.addEventListener('click',act);p.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();act();}});});
+  keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=n.dest.length){e.preventDefault();pick(n.dest[k-1]);}};
+}
+document.addEventListener('keydown',e=>{if(!$('ov').hidden||!$('drawer').hidden)return;if(e.target.tagName==='INPUT')return;keyHandler&&keyHandler(e);});
+function toast(k,msg){const t=el('div','toast');t.style.borderLeftColor=CAST[k]?CAST[k].c:'var(--violet)';if(CAST[k])t.append(avatarEl(k,'av'));t.append(el('span',null,msg));
+  const tb=$('toasts');while(tb.children.length>=3)tb.firstChild.remove();tb.append(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),450);},3200);}
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+
+/* ---------- builder minigame ---------- */
+function gameBuild(n){
+  if(typing)typing.fin();
+  const d=n.data;const picks=[];let idx=0,finished=false;
+  const hd=el('div','gm-head');hd.append(el('div','gm-title',d.title));const tl=el('span','scoretxt');hd.append(tl);
+  panel.append(hd,el('div','gm-sit',d.sit));
+  const slotBar=el('div','slots');d.slots.forEach(s=>slotBar.append(el('span','slot',s.k+' · '+s.n)));panel.append(slotBar);
+  const area=el('div');area.style.display='grid';area.style.gap='10px';panel.append(area);
+  if(d.time&&timersOn()){tl.textContent='Timed';panel.insertBefore(startTimer(d.time,()=>finish(true)),slotBar);}else tl.textContent='Take your time';
+  const render=()=>{
+    [...slotBar.children].forEach((c,i)=>c.className='slot'+(i<idx?' done':i===idx?' on':''));
+    area.replaceChildren();const s=d.slots[idx];
+    const lab=el('div','slot-label');lab.append(el('span','big',s.k),el('span','nm',s.n),el('span','hint',s.h));area.append(lab);
+    const grid=el('div','opts');const opts=shuffle(s.o);
+    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,o.x));b.onclick=()=>pickOne(o);grid.append(b);});
+    area.append(grid);
+    keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();pickOne(opts[k-1]);}};
+  };
+  const pickOne=o=>{if(finished)return;picks.push(o);idx++;if(idx>=d.slots.length)finish(false);else render();};
+  const finish=timedOut=>{
+    if(finished)return;finished=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+    while(picks.length<d.slots.length)picks.push({x:'(Out of time)',q:0,w:'The clock ran out before you got here.',out:1});
+    const pts=picks.reduce((a,p)=>a+p.q,0),max=d.slots.length*2,frac=pts/max;
+    S.g[d.id]=frac;S.picks[d.id]=picks.filter(p=>!p.out).map(p=>p.x);
+    const gain=frac>=.85?3:frac>=.6?2:frac>=.35?1:0;S.v[d.skill]+=gain;
+    S.log.push({ch:S.ch,q:d.title,a:'Scored '+pts+' of '+max,fx:gain?{[d.skill]:gain}:{}});
+    const said=S.picks[d.id].join(' ');
+    if(n.say&&said)addLine({s:'you',x:said});
+    clearPanel();
+    const h=el('div','gm-head');h.append(el('div','gm-title',d.title+(timedOut?' · time ran out':'')));
+    const sc=el('span','scoretxt');sc.append(document.createTextNode('Score '),el('b',null,pts+' / '+max));h.append(sc);panel.append(h);
+    const fb=el('div','fb');
+    picks.forEach((p,i)=>{const r=el('div','fb-row');r.append(el('span','k',d.slots[i].k));const c=el('div');
+      const a=el('div');a.append(el('span','dot q'+p.q),document.createTextNode(p.x));c.append(a,el('div','w',p.w||''));r.append(c);fb.append(r);});
+    panel.append(fb);
+    if(gain)toast(null,'+'+gain+' '+SKILLS[d.skill]);
+    const b=el('button','cont','Continue');b.type='button';b.onclick=()=>step();panel.append(b);
+    keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();step();}};
+  };
+  render();
+}
+
+/* ---------- mirror minigame ---------- */
+function gameMirror(n){
+  if(typing)typing.fin();
+  const d=n.data;let r=0,score=0;
+  const runRound=()=>{
+    clearPanel();const R=d.rounds[r];
+    const hd=el('div','gm-head');hd.append(el('div','gm-title',d.title+' · call '+(r+1)+' of '+d.rounds.length));hd.append(el('span','scoretxt','Correct '+score));panel.append(hd);
+    if(r===0)panel.append(el('div','gm-sit',d.sit));
+    const card=el('div','callcard');card.textContent='Theo: "'+R.call+'"';panel.append(card);
+    const status=el('div','scoretxt','Listen...');panel.append(status);
+    setTalk('theo');showDlg('theo',R.call);
+    const pingT=setTimeout(()=>{card.append(el('div','ping',R.ping));},1300);
+    const showFor=d.show*1000*(SET.timer==='relaxed'?2:SET.timer==='off'?2.4:1);
+    setTimeout(()=>{clearTimeout(pingT);if(typing)typing.fin();card.className='callcard gone';card.textContent='The call is gone. What did you hear?';dlg.hidden=true;setTalk(null);status.textContent='Pick your mirror and check';ask(R);},showFor);
+  };
+  const ask=R=>{
+    let done=false;const opts=shuffle(R.o);const grid=el('div','opts');
+    const answer=o=>{if(done)return;done=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+      [...grid.children].forEach((b,i)=>{b.disabled=true;const oo=opts[i];if(oo===o)b.classList.add('q'+o.q);else if(oo.q===2)b.classList.add('q2');else b.classList.add('dim');});
+      addLine({s:'you',x:o?o.x:'(You missed it)'},true);
+      if(o&&o.q===2){score++;addLine({s:'theo',x:'Yes. Exactly.'});}
+      else{addLine({s:'theo',x:'No. I said: "'+R.call+'"'});if(o&&o.w)panel.append(el('div','gm-sit',o.w));}
+      const b=el('button','cont',r<d.rounds.length-1?'Next call':'Finish drill');b.type='button';
+      b.onclick=()=>{if(typing)typing.fin();r++;if(r<d.rounds.length)runRound();else end();};panel.append(b);
+      keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();b.click();}};
+    };
+    if(timersOn())panel.insertBefore(startTimer(d.time,()=>answer(null)),panel.lastChild);
+    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,o.x));b.onclick=()=>answer(o);grid.append(b);});
+    panel.append(grid);
+    keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();answer(opts[k-1]);}};
+  };
+  const end=()=>{
+    S.g[d.id]=score/d.rounds.length;
+    const gain=score>=3?3:score===2?2:score===1?1:0;S.v[d.skill]+=gain;
+    S.log.push({ch:S.ch,q:d.title,a:'Mirrored '+score+' of '+d.rounds.length+' calls correctly',fx:gain?{[d.skill]:gain}:{}});
+    if(gain)toast(null,'+'+gain+' '+SKILLS[d.skill]);
+    step();
+  };
+  runRound();
+}
+
+/* ---------- chapters, recap, ending ---------- */
+function setHud(chap){
+  $('hudCh').textContent=chap.ch+' · '+chap.name;
+  const t=$('hudTags');t.replaceChildren();chap.tags.forEach(([c,l])=>t.append(el('span','tag '+c,l+(c==='k'?' Knowledge':' Tool'))));
+}
+function startChapter(i){
+  S.ch=i;const chap=CHAPTERS[i];
+  store.set('scouted2.save',{S,at:i});
+  setHud(chap);$('ov').hidden=true;
+  logPush({sc:chap.ch+' · '+chap.name});
+  Q=chap.nodes.slice();step();
+}
+function chipsFor(fx){const w=el('div','chips');Object.entries(fx||{}).forEach(([k,v])=>{if(!v)return;w.append(el('span','chip '+(v>0?'up':'dn'),(v>0?'+':'')+v+' '+LABEL(k)));});return w;}
+function cardEl(c){const d=el('div','tc '+c.c);d.append(el('div','lbl',c.lbl),el('h3',null,c.h),el('p',null,c.p));
+  if(c.steps){const s=el('div','steps');c.steps.forEach(([k,h])=>{const r=el('div');r.append(el('b',null,k));const sp=el('span');sp.innerHTML=h;r.append(sp);s.append(r);});d.append(s);}return d;}
+function showRecap(){
+  clearPanel();
+  const chap=CHAPTERS[S.ch],info=CARDS[chap.key];
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in');
+  w.append(el('div','brand',info.tag+' · complete'));
+  const h=el('h1','logo',info.title);h.style.fontSize='clamp(40px,9vw,76px)';w.append(h);
+  w.append(el('h2','sec-h','What you learned'));
+  const tcs=el('div','toolcards');info.cards.forEach(c=>tcs.append(cardEl(c)));w.append(tcs);
+  w.append(el('h2','sec-h','Your choices'));
+  const pk=el('div','picks');
+  S.log.filter(x=>x.ch===S.ch).forEach(x=>{const p=el('div','pick');p.append(el('div','scoretxt',(x.v?(PINS[x.v]?PINS[x.v].n:VENUES[x.v])+' · ':'')+x.q),el('div','a',x.a),chipsFor(x.fx));pk.append(p);});
+  w.append(pk);
+  const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'),el('p',null,info.reflect));w.append(rf);
+  const row=el('div','row');const next=S.ch+1<CHAPTERS.length;
+  const b=el('button','btn',next?'Next: '+CHAPTERS[S.ch+1].ch:'Finish');b.type='button';b.onclick=()=>{if(next)startChapter(S.ch+1);};
+  const t=el('button','btn ghost','See team');t.type='button';t.onclick=openTeam;
+  row.append(b,t);w.append(row);
+  ov.append(w);ov.hidden=false;ov.scrollTop=0;b.focus({preventScroll:true});
+  store.set('scouted2.save',{S,at:S.ch+1});
+}
+function relState(v){return v>=4?'Trusted':v>=2?'Friendly':v>=0?'Neutral':'Strained';}
+function relEl(k){const v=S.v[k];const r=el('div','rel');r.append(avatarEl(k,'av'));const b=el('div');b.append(el('div','nm',CAST[k].n),el('div','st',CAST[k].r+' · '+relState(v)));
+  const p=el('div','pips');for(let i=0;i<6;i++){const q=el('i');if(v>0&&i<v)q.className='on';if(v<0&&i<-v)q.className='neg';p.append(q);}b.append(p);r.append(b);return r;}
+function barEl(label,v,max,color){const b=el('div','bar');const t=el('div','top');t.append(el('span',null,label),el('span',null,Math.max(0,v)+' pts'));
+  const tr=el('div','tr');const i=el('i');i.style.width=Math.min(100,Math.max(0,v)/max*100)+'%';i.style.background=color;tr.append(i);b.append(t,tr);return b;}
+function drawerHead(title){const d=$('drawer');d.replaceChildren();const h=el('div','gm-head');h.append(el('div','gm-title',title));const x=el('button','hbtn','Close');x.type='button';x.onclick=()=>{d.hidden=true;};h.append(x);d.append(h);d.hidden=false;x.focus();return d;}
+function openTeam(){
+  const d=drawerHead('Your team');
+  d.append(el('div','scoretxt','How people feel about you right now.'));
+  RELS.forEach(k=>d.append(relEl(k)));
+  d.append(el('h2','sec-h','Comms skills'));
+  Object.entries(SKILLS).forEach(([k,l])=>d.append(barEl(l,S.v[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  d.append(el('h2','sec-h','Valor values'));
+  Object.entries(VALUES).forEach(([k,l])=>d.append(barEl(l,S.v[k],6,'var(--violet2)')));
+}
+function openLog(){
+  const d=drawerHead('Conversation log');
+  if(!LOG.length)d.append(el('div','scoretxt','Nothing yet.'));
+  LOG.forEach(e=>{
+    if(e.sc){d.append(el('div','logl sc',e.sc+(e.day?' · '+e.day+(e.time?' '+e.time:''):'')));return;}
+    const r=el('div','logl'+(e.s==='sys'?' sys':''));
+    if(e.s!=='sys'){const b=el('b',null,e.s==='you'?S.name:(CAST[e.s]?CAST[e.s].n:e.s));b.style.color=e.s==='you'?'var(--violet2)':(CAST[e.s]?CAST[e.s].c:'');r.append(b);}
+    r.append(el('span',null,e.x));d.append(r);});
+  d.scrollTop=d.scrollHeight;
+}
+$('teamBtn').onclick=openTeam;$('logBtn').onclick=openLog;$('menuBtn').onclick=()=>showTitle();
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('drawer').hidden=true;});
+
+function showFinal(){
+  clearPanel();
+  const s=S.v;const valSum=s.positive+s.purpose+s.respect;
+  let title,lines=[];
+  if(S.f.blaze){title='The Solo Act';
+    lines=['You sign with Blaze Syndicate. The money is real, and so is the stream deal.',
+     'But nobody plans practice, nobody reviews, and when a match goes badly, the team chat fills with blame. Three roster changes in six months.',
+     'You still play well. You just miss being heard, and hearing others. In March, a message arrives from Coach Raman: "The door is still open."'];}
+  else if(S.f.offer==='main'){title=S.f.won?'The Shot Caller':'The Captain in Waiting';
+    lines=[S.f.won?'State champions, and next season you call for the Comets main roster.':'Second in the state, and next season you call for the Comets main roster.',
+     'People follow you because you are calm, clear and sincere. Because you check, and you listen back.'];}
+  else{title='The Teammate';
+    lines=['Another season in the academy, now as deputy caller next to Mako.',
+     'You have the tools now: State, Describe, Verify. Listen, Mirror, Check. Someone, Want, Obstacle, Change. CALM. Next season is about using them every time, not just when you remember.'];}
+  if(S.f.honest)lines.push('Telling Coach Raman about the offer was the moment the club decided to build around you.');
+  if(S.f.deeThere)lines.push('Dee keeps the sign from the grand final, handle still spelled wrong. It goes up on the wall at the Comets base.');
+  else if(s.dee>=2)lines.push('Dee is in the crowd at your first match of next season, holding a sign with your handle spelled wrong. You keep it.');
+  else if(s.dee<0)lines.push('You and Dee talk less these days. Maybe a message, this week, would be a good start.');
+  if(s.theo>=4)lines.push('Theo becomes one of the best info callers in the league. In his first interview, he names you as the reason he kept talking.');
+  else if(s.theo<0)lines.push('Theo moves to another academy at the end of the season. He never really said why.');
+  if(s.jules>=2)lines.push('Jules still gets loud. But now, when you say "one voice", Jules is the first to go quiet.');
+  if(valSum>=6)lines.push('At the season awards, the league gives you the Positive Player award, voted by the other teams.');
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in ending');
+  const hero=el('div','hero');const hb=el('div','bg');hb.innerHTML=BG[S.f.blaze?'home':S.f.won?'arena':'academy']();hero.append(hb);
+  const hc=el('div','cast');(S.f.blaze?['ryder']:['jules','mako','theo','coach']).forEach(k=>{const sp=el('div','spr');sp.innerHTML=sprite(k);hc.append(sp);});hero.append(hc);w.append(hero);
+  w.append(el('div','brand','Your career · Season one'));w.append(el('h2','end-t',title));
+  const ep=el('div','ep');lines.forEach(l=>ep.append(el('p',null,nm(l))));w.append(ep);
+  w.append(el('h2','sec-h','Your people'));const rg=el('div','relgrid');RELS.forEach(k=>rg.append(relEl(k)));w.append(rg);
+  w.append(el('h2','sec-h','Your comms profile'));
+  const bars=el('div','bars');Object.entries(SKILLS).forEach(([k,l])=>bars.append(barEl(l,s[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  Object.entries(VALUES).forEach(([k,l])=>bars.append(barEl(l,s[k],6,'var(--violet2)')));w.append(bars);
+  const top=Object.entries(SKILLS).sort((a,b)=>s[b[0]]-s[a[0]]);
+  const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'));
+  rf.append(el('p',null,'Your strongest skill this run was '+top[0][1]+'. The one to work on is '+top[3][1]+'. Where could you practise it this week, in a game or in real life?'));w.append(rf);
+  const row=el('div','row');const a=el('button','btn','Play again');a.type='button';a.onclick=()=>{store.set('scouted2.save',null);showTitle();};
+  const b=el('button','btn ghost','Pick a chapter');b.type='button';b.onclick=()=>showTitle();row.append(a,b);w.append(row);
+  ov.append(w);ov.hidden=false;ov.scrollTop=0;
+  store.set('scouted2.save',null);
+}
+
+/* ---------- title / notes ---------- */
+function showTitle(){
+  clearPanel();
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in');
+  const hero=el('div','hero');const hb=el('div','bg');hb.innerHTML=BG.academy();hero.append(hb);const tn=el('div','tint Evening');hero.append(tn);
+  const hc=el('div','cast');['jules','mako','theo','dee','coach'].forEach(k=>{const sp=el('div','spr');sp.innerHTML=sprite(k);hc.append(sp);});hero.append(hc);
+  const lw=el('div');lw.append(el('div','brand','Valor Esports · Communication Skills Level 2'),el('h1','logo','Scouted'));w.append(lw,hero);
+  const lede=el('p','lede');lede.innerHTML='You are a young player who just got scouted by an academy team. Move through your week, at home, at school, at the academy and on match day. Every chat shapes your career. <b>Choose what you say. People remember.</b>';w.append(lede);
+  const f=el('div','field');const lb=el('label',null,'Your player handle');lb.htmlFor='handle';const inp=el('input');inp.id='handle';inp.maxLength=16;inp.value=S.name||'Nova';inp.autocomplete='off';f.append(lb,inp);w.append(f);
+  const sv=store.get('scouted2.save');
+  const getName=()=>(inp.value||'').trim().slice(0,16)||'Nova';
+  const row=el('div','row');
+  const go=el('button','btn','New career');go.type='button';go.onclick=()=>{S=fresh();S.name=getName();LOG.length=0;startChapter(0);};row.append(go);
+  if(sv&&sv.S&&sv.at<CHAPTERS.length){const c=el('button','btn ghost','Continue: '+CHAPTERS[sv.at].ch+' · '+CHAPTERS[sv.at].name);c.type='button';
+    c.onclick=()=>{S=Object.assign(fresh(),sv.S);startChapter(sv.at);};row.append(c);}
+  const tnb=el('button','btn ghost','For coaches');tnb.type='button';tnb.onclick=showNotes;row.append(tnb);
+  w.append(row);
+  const mkSeg=(label,key,opts)=>{const st=el('div','row');st.append(el('span','scoretxt',label));const seg=el('div','seg');
+    opts.forEach(([k,l])=>{const b=el('button',SET[key]===k?'on':'',l);b.type='button';b.onclick=()=>{SET[key]=k;store.set('scouted2.settings',SET);[...seg.children].forEach(c=>c.className='');b.className='on';};seg.append(b);});st.append(seg);return st;};
+  w.append(mkSeg('Timers',"timer",[['normal','Normal'],['relaxed','Relaxed'],['off','Off']]));
+  w.append(mkSeg('Text speed',"text",[['normal','Normal'],['fast','Fast'],['instant','Instant']]));
+  w.append(el('h2','sec-h','Jump to a chapter'));
+  const g=el('div','chgrid');
+  CHAPTERS.forEach((c,i)=>{const b=el('button','chcard');b.type='button';
+    const tagrow=el('div','row');tagrow.style.gap='6px';tagrow.append(el('span','n',c.ch));c.tags.forEach(([k,l])=>tagrow.append(el('span','tag '+k,l)));
+    b.append(tagrow,el('span','ttl',c.name),el('span','s',c.blurb));
+    b.onclick=()=>{S=fresh();S.name=getName();LOG.length=0;startChapter(i);};g.append(b);});
+  w.append(g);
+  ov.append(w);ov.hidden=false;ov.scrollTop=0;
+}
+function showNotes(){
+  const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in notes');
+  w.append(el('div','brand','For coaches and teachers'));
+  const h=el('h1','logo','Coach notes');h.style.fontSize='clamp(40px,9vw,72px)';w.append(h);
+  w.append(el('p','lede','Scouted is a short narrative choice game built on the Communication Skills Level 2 course. Each chapter lines up with one module, so students can play a chapter after the matching lessons, or play it all in one go in about 40 to 50 minutes.'));
+  const tw=el('div','tbl');const t=el('table');
+  t.innerHTML='<thead><tr><th>Chapter</th><th>Weeks</th><th>Places</th><th>What students practise</th></tr></thead><tbody>'+
+   '<tr><td>Prologue: The Message</td><td>Any</td><td>Home, phone, school</td><td>Game time is training time. Planning the night before a big day.</td></tr>'+
+   '<tr><td>1: Clear Signal</td><td>1 and 2</td><td>Academy, match, all chat, home</td><td>Sender, message, receiver. Building a State, Describe, Verify call. Positive gaming in all chat and on social media.</td></tr>'+
+   '<tr><td>2: Heard, Not Listened</td><td>3 and 4</td><td>Bus, phone, school, academy, match</td><td>Listening barriers in a group project and in game. A Listen, Mirror, Check drill. Backing up a quiet teammate.</td></tr>'+
+   '<tr><td>3: The Story We Tell</td><td>5 and 6</td><td>Match, academy, phone, library, stream desk</td><td>Set, Play, Review. Moving on from blame. Balancing study and training. Someone, Want, Obstacle, Change on stream.</td></tr>'+
+   '<tr><td>4: Calm Under Pressure</td><td>7 and 8</td><td>Home, academy, arena, match</td><td>A 3P brief. A CALM reset in a tense final. A career choice.</td></tr></tbody>';
+  tw.append(t);w.append(tw);
+  w.append(el('h2','sec-h','How it plays'));
+  const ul=el('ul');['Each chapter moves through a week. The bar at the top shows the day and the time: morning, day, evening, night.',
+   'Between scenes, the town map shows which places are open. Students pick where to go, and how they spend their free time matters later.',
+   'Some replies are timed. If the bar runs out, the player says nothing, and that has consequences too. Set timers to Relaxed or Off for students who need more time.',
+   'Characters remember choices. A pop-up shows when they do. Open Team to see relationships, skills and Valor values, and Log to reread the conversation.',
+   'Each module has its own mini game: a call builder, a listening drill, a story builder, a 3P brief and a CALM reset. Every pick gets a short explanation.',
+   'Small choices pay off later. For example, listening properly to Dee on the bus in Chapter 2 decides whether she can get to the grand final.',
+   'Progress saves in this browser only. Use "Jump to a chapter" to start any chapter fresh for a lesson.'].forEach(x=>ul.append(el('li',null,x)));
+  w.append(ul);
+  w.append(el('h2','sec-h','Discussion questions'));
+  const ul2=el('ul');['Which choice was the hardest to make in time? What made it hard?','How did you spend your free time on the map? Would you change that?','Where did you see a message get lost, at school or in the game, and what fixed it?','Pick one moment where staying silent mattered. Was silence the right call?','Which ending did you get? What would you do differently next run?'].forEach(x=>ul2.append(el('li',null,x)));
+  w.append(ul2);
+  const b=el('button','btn','Back');b.type='button';b.onclick=showTitle;const r=el('div','row');r.append(b);w.append(r);
+  ov.append(w);ov.scrollTop=0;
+}
+setBg('academy');setTime('', 'Evening');
+showTitle();
+
+</script>
+
+</body>
+</html>
