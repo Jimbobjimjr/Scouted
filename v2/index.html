@@ -300,6 +300,24 @@ h1.logo{font-family:var(--display);font-weight:700;font-size:clamp(52px,12vw,110
 @keyframes fxin{from{opacity:0;transform:translate(-50%,10px) scale(.9)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
 @keyframes fxout{to{opacity:0;transform:translate(-50%,-14px)}}
 .pips{flex-wrap:wrap}.pips i{width:9px}
+
+/* round 2 and 3 additions */
+.toasts .fxflash{position:static;transform:none;max-width:100%;justify-items:start;animation:tin .35s ease-out both;background:rgba(8,13,34,.94)}
+.toasts .fxflash .chips{justify-content:flex-start}
+.toasts .fxflash.out{animation:tout .4s ease-in forwards}
+.bub .who{display:block;font-family:var(--display);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+.opt.crossed{opacity:.55}.opt.crossed>span{text-decoration:line-through;text-decoration-color:var(--bad)}
+.tip.no{background:rgba(255,122,138,.16);color:#ff9aa6;text-decoration:none;display:inline-block}
+.pick.link{border-left:3px solid var(--line2)}.pick.link.up{border-left-color:#3dd6b0}.pick.link.dn{border-left-color:var(--warn)}
+.pick.link .a{font-size:16px}
+@media print{
+  html,body{background:#fff!important;color:#000!important;height:auto!important;overflow:visible!important}
+  #app,.toasts,.drawer,.ov .row,.hero{display:none!important}
+  .ov{position:static!important;background:#fff!important;overflow:visible!important;padding:0!important}
+  .ov *{color:#000!important;background:none!important;box-shadow:none!important;-webkit-text-fill-color:#000!important;text-shadow:none!important;filter:none!important}
+  .tc,.pick,.reflect,.rel{border:1px solid #999!important;break-inside:avoid}
+  .chip{border:1px solid #999!important}.bar .tr{border:1px solid #999}.bar .tr i{background:#666!important}
+}
 </style>
 <style>body{margin:0}</style>
 </head>
@@ -490,116 +508,153 @@ const SCORE=(a,b,round)=>({t:'score',a,b,round});
 const G=(kind,d)=>Object.assign({t:'game',kind},d);
 const MAP=o=>Object.assign({t:'map'},o);
 const D=(v,x,fx,then,mem,lock)=>({v,x,fx:fx||{},then:then||[],mem,lock});
-/* relationships: start low, Trusted at 15 or more gives a perk, below 0 is Strained and costs you */
-const PERK_AT=15,STRAIN_AT=-1;
+/* relationships: start low. Close at 8 gives a small perk, Trusted at 15 a stronger one, below 0 is Strained and costs you */
+const PERK_AT=15,CLOSE_AT=8,STRAIN_AT=-1;
 const REL_START={coach:2,mako:2,jules:1,theo:1,dee:3};
 const PERKS={
- coach:{up:"Coach's tip: she flags one strong option in each call builder.",dn:'Coach is watching closely: minigames give 1 less skill point.'},
- mako:{up:'Mako backs your calls: team call builders score 10% higher.',dn:'Mako second-guesses you: team call builders score 10% lower.'},
- jules:{up:'Jules buys you time: 6 extra seconds on timed builders.',dn:'Jules talks over you: 6 fewer seconds on timed builders.'},
- theo:{up:'Theo repeats his calls: mirror calls stay up longer.',dn:'Theo goes quiet: mirror calls disappear sooner.'},
- dee:{up:'Dee keeps you grounded: you wake up with 1 extra energy each day.',dn:'Dee is hurt: plans with Dee are off, and she may skip your final.'}
+ coach:{mid:"Coach's nod: she rules out one weak option at the start of each call builder.",up:"Coach's tip: she flags one strong option in each call builder.",dn:'Coach is watching closely: minigames give 1 less skill point.'},
+ mako:{mid:'Mako nods along: team call builders score 5% higher.',up:'Mako backs your calls: team call builders score 10% higher.',dn:'Mako second-guesses you: team call builders score 10% lower.'},
+ jules:{mid:'Jules gives you room: 3 extra seconds on timed builders.',up:'Jules buys you time: 6 extra seconds on timed builders.',dn:'Jules talks over you: 6 fewer seconds on timed builders.'},
+ theo:{mid:'Theo slows down for you: mirror calls stay up a little longer.',up:'Theo repeats his calls: mirror calls stay up longer.',dn:'Theo goes quiet: mirror calls disappear sooner.'},
+ dee:{mid:'Dee has your back: 4 extra seconds on your first timed choice each day.',up:'Dee keeps you grounded: you wake up with 1 extra energy each day.',dn:'Dee is hurt: plans with Dee are off, and she may skip your final.'}
 };
 const perk=(s,k)=>s.v[k]>=PERK_AT?1:s.v[k]<=STRAIN_AT?-1:0;
-/* energy: a daily budget. Every side activity costs energy. Sleep gives 3 back overnight. */
+const tier=(s,k)=>s.v[k]>=PERK_AT?2:s.v[k]>=CLOSE_AT?1:s.v[k]<=STRAIN_AT?-1:0;
+/* energy: a daily budget. Every side activity costs energy. Resting gives 1 back, sleep gives 3 back overnight. */
 const ENERGY_MAX=6,ENERGY_START=5,ENERGY_SLEEP=3;
 const TEAMCALL=['sdv','brief','calm'];
 const energyState=e=>e>=5?'Fresh':e<=1?'Running on empty':'Steady';
 /* a time slot on the town map: side activities that cost energy, plus a free option */
 const SLOT=(day,time,q,dest)=>MAP({day,time,q,dest});
-const REST=(v,x,then)=>D(v,x,{},then||[]);
+const REST=(v,x,then)=>D(v,x,{energy:1},then||[]);
 
-/* minigames */
-const GAME_SDV={id:'sdv',skill:'clear',time:35,title:'Call builder: State, Describe, Verify',
-  sit:'Round 2 is about to start. You want the middle objective early. Mako calls the timing, Jules holds left, Theo backs you up. You all move at 1:30.',
+/* minigames. The best line is not the longest one, and from Day 4 most steps have a near miss. */
+const GAME_SDV={id:'sdv',skill:'clear',time:40,title:'Call builder: State, Describe, Verify',
+  sit:'Round 2 is about to start. The whiteboard from the pause still says: MIDDLE OBJECTIVE, EARLY. Jules = left. Theo = with you. Mako = timing. GO 1:30. Now make the call.',
   slots:[
    {k:'S',n:'State',h:'What are we doing?',o:[
-     {x:'Our goal this round: take the middle objective early.',q:2,w:'One clear goal. Everyone knows what the round is for.'},
-     {x:"Let's just play it out and see what happens.",q:0,w:'There is no goal here, so everyone makes up their own.'},
-     {x:"Middle. Fast. Don't mess it up like last round.",q:0,w:'Short, but it is a dig at the team, and "fast" is not a plan.'}]},
+     {x:'Our goal: take the middle objective early.',q:2,w:'One clear goal. Everyone knows what the round is for.'},
+     {x:"Okay, so, same as before but better this time, and let's see how it plays out.",q:0,w:'There is no goal here, so everyone makes up their own.'},
+     {x:"Middle, and fast. Don't mess it up like last round, yeah?",q:0,w:'Short, but it is a dig at the team, and "fast" is not a plan.'}]},
    {k:'D',n:'Describe',h:'What does each person do?',o:[
-     {x:'Mako calls timing, Jules holds left, Theo backs me up. We move at 1:30.',q:2,w:'Every person has a job and there is a time. Nobody has to guess.'},
-     {x:'Everyone do your usual thing.',q:0,w:'Usual to who? This leaves the same gaps as last round.'},
-     {x:'Jules left, Theo with me.',q:1,w:'Good start, but there is no timing and nothing for Mako.'}]},
+     {x:'Mako calls timing. Jules holds left. Theo backs me up. We go at 1:30.',q:2,w:'Every person has a job and there is a time. Nobody has to guess.'},
+     {x:'Everyone do what you normally do, just a bit tighter and a bit quicker than last time.',q:0,w:'Normal to who? This leaves the same gaps as last round.'},
+     {x:'Jules, you go left, and Theo, you stick close to me the whole way.',q:1,w:'Two clear jobs, but there is no timing and nothing for Mako.'}]},
    {k:'V',n:'Verify',h:'Check it landed',o:[
-     {x:"Theo, tell me where you're going and when we move.",q:2,w:'A repeat back shows you what Theo actually heard.'},
-     {x:'Do you get it?',q:0,w:'Most people just say yes. You learn nothing.'},
-     {x:'Cool? Cool.',q:0,w:"That isn't a check. It's a hope."}]}
+     {x:'Theo, say it back: where are you, and when do we go?',q:2,w:'A repeat back shows you what Theo actually heard.'},
+     {x:'Does that all make sense to everyone? Yeah?',q:0,w:'Most people just say yes. You learn nothing about what they heard.'},
+     {x:"Everyone clear on the plan? Sweet, let's go.",q:0,w:"That isn't a check. It's a hope."}]}
   ]};
-const GAME_MIRROR={id:'mirror',skill:'listen',show:4.5,time:12,who:'theo',title:'Listen, Mirror, Check',
+const GAME_MIRROR={id:'mirror',skill:'listen',show:4.5,time:14,who:'theo',title:'Listen, Mirror, Check',
   sit:'Theo will make three calls. Each one shows for a few seconds, then it is gone. Listen fully, then pick the mirror and check you would say back.',
   rounds:[
    {call:'Rotate right on the next timer, then hold the long corridor.',ping:'Jules: did you see that clip I sent??',o:[
-     {x:'So we rotate right on the next timer and I hold the long corridor? Is that right?',q:2},
-     {x:'So we rotate left and hold the long corridor? Is that right?',q:0,w:'Wrong side. A mirror catches this before anyone moves.'},
-     {x:'Rotate right, then push the long corridor!',q:0,w:'"Hold" became "push", and there was no check.'},
-     {x:'Yep, got it.',q:0,w:'No mirror, so nobody knows what you heard.'}]},
+     {x:'So rotate right on the next timer, then hold the long corridor? Is that right?',q:2},
+     {x:'So we rotate left on the next timer and then hold the long corridor? Is that right?',q:0,w:'Wrong side. A mirror catches this before anyone moves.'},
+     {x:'Rotate right on the timer, then we push through the long corridor!',q:0,w:'"Hold" became "push", and there was no check.'},
+     {x:'Yep, got it, rotating now, on my way.',q:0,w:'No mirror, so nobody knows what you heard.'}]},
    {call:'Two on B, one on A. Save your shield for the retake.',ping:'Your phone buzzes on the desk.',o:[
      {x:'So two on B, one on A, and I save my shield for the retake? Is that right?',q:2},
-     {x:'So two on A, one on B, and shield now? Is that right?',q:0,w:'The numbers flipped. Distractions make the gaps bigger.'},
-     {x:"So they're all on B? Is that right?",q:0,w:'You filled in the gap with a guess. Good that you checked, though.'},
-     {x:'Okay, using my shield now!',q:0,w:'You acted on half the call.'}]},
+     {x:'So two on A, one on B, and I use my shield now? Is that right?',q:0,w:'The numbers flipped. Distractions make the gaps bigger.'},
+     {x:'So they are all on B and I should save my shield? Is that right?',q:0,w:'You filled in the gap with a guess. Good that you checked, though.'},
+     {x:'Okay, using my shield now and heading over to B!',q:0,w:'You acted on half the call.'}]},
    {call:"Don't chase. Fall back to spawn and wait for Mako.",ping:"Jules: I can chase, they're weak!",o:[
-     {x:"So no chasing, fall back to spawn and wait for Mako? Is that right?",q:2},
-     {x:'So chase with Jules, then wait for Mako?',q:0,w:'Jules was louder, so his idea got in. That is the assumption barrier.'},
-     {x:'So fall back and wait for Jules? Is that right?',q:0,w:'Right action, wrong person. The check would let Theo fix it.'},
-     {x:'Got it.',q:0,w:'No mirror, so nobody can tell if you heard it right.'}]}
+     {x:'So no chasing, back to spawn, wait for Mako? Is that right?',q:2},
+     {x:'So chase with Jules first, then fall back and wait for Mako? Is that right?',q:0,w:'Jules was louder, so his idea got in. That is the assumption barrier.'},
+     {x:'So fall back to spawn and wait there for Jules? Is that right?',q:0,w:'Right action, wrong person. Good that you checked, so Theo can fix it.'},
+     {x:'Got it, falling back now.',q:0,w:'No mirror, so nobody can tell if you heard it right.'}]}
+  ]};
+const GAME_MIRROR_R={id:'mirrorr',skill:'listen',show:4.2,time:14,practice:1,who:'theo',title:'Rematch: mirror the call',
+  sit:'Map 3 against Ridgeline. The arena is loud and Theo is calling. Say each call back before you move.',
+  rounds:[
+   {call:'They are stacking middle again. Hold, and wait for my count.',ping:'The crowd roars at something on the big screen.',o:[
+     {x:'So they are stacking middle, we hold, and wait for your count? Is that right?',q:2},
+     {x:'So they are stacking middle and we go in on your count? Is that right?',q:0,w:'"Hold" went missing. That is the same mistake that lost the semi-final.'},
+     {x:'So middle is empty at the moment and we hold here? Is that right?',q:0,w:'You heard "hold" but lost why. Good that you checked.'},
+     {x:'Holding!',q:0,w:'Half the call, and no check.'}]},
+   {call:'Jules left door, you with me on right. Go on three.',ping:'Jules: can I just go now?',o:[
+     {x:'So Jules left door, I am with you on right, go on three? Is that right?',q:2},
+     {x:'So I take the left door with Jules, and we go on three? Is that right?',q:0,w:'The doors swapped. The mirror lets Theo fix it in one word.'},
+     {x:'So Jules left, me right with you, and we go right now? Is that right?',q:0,w:'Jules was louder, so "now" replaced "on three".'},
+     {x:'Yep, going!',q:0,w:'No mirror. In this noise, that is a guess.'}]},
+   {call:'Last one. Shield up first, then all four of us push together.',ping:'Your hands are shaking a little.',o:[
+     {x:'So shield first, then all four push together? Is that right?',q:2},
+     {x:'So we all push first and the shield goes up after? Is that right?',q:0,w:'The order flipped. Order is the whole call here.'},
+     {x:'So shield up, and then I push in on my own? Is that right?',q:0,w:'"All four together" got lost. Nerves make the gaps bigger.'},
+     {x:'On it.',q:0,w:'No mirror, no check.'}]}
   ]};
 const GAME_STORY={id:'story',skill:'story',time:0,title:'Story Shaping',
   sit:"Practise the story of the semi-final for next week's stream interview. Pick one line for each step so someone who was not there can picture it.",
   slots:[
    {k:'S',n:'Someone',h:'Who is it about?',o:[
-     {x:'Our team, the Bayside Comets, in our first ever semi-final.',q:2,w:'A clear main character the audience can follow.'},
-     {x:'Me, because I was easily the best player out there.',q:0,w:'It turns the team story into a brag.'},
-     {x:'Ridgeline.',q:1,w:"They are part of it, but it is your team's story to tell."}]},
+     {x:'Our team, the Comets, in our first semi-final.',q:2,w:'A clear main character the audience can follow.'},
+     {x:'Me, mostly, because I was easily the best player out there on the day.',q:0,w:'It turns the team story into a brag.'},
+     {x:'Ridgeline, since they were the ones who knocked us down.',q:1,w:"They are part of it, but it is your team's story to tell."}]},
    {k:'W',n:'Want',h:'What did they want?',o:[
-     {x:"We wanted to take middle early, like we'd practised all week.",q:2,w:'Specific, and it links back to the training.'},
-     {x:'We wanted to win.',q:1,w:'True, but everyone wants that. It gives the listener nothing to picture.'},
-     {x:'Jules wanted to be a hero, as usual.',q:0,w:'That is blame dressed up as a story.'}]},
+     {x:"We wanted middle early, the way we'd practised.",q:2,w:'Specific, and it links back to the training.'},
+     {x:'We wanted to win, the same as every team wants to win.',q:1,w:'True, but everyone wants that. It gives the listener nothing to picture.'},
+     {x:'Jules wanted to be the hero again, like he always does.',q:0,w:'That is blame dressed up as a story.'}]},
    {k:'O',n:'Obstacle',h:'What got in the way?',o:[
-     {x:"Ridgeline stacked middle, we went in early, and Theo's call got lost in the noise.",q:2,w:'Specific, fair to everyone, and easy to picture.'},
-     {x:"Theo's call was late.",q:0,w:'It puts it all on one teammate, in public.'},
-     {x:'Stuff just went wrong.',q:0,w:'Vague. Nobody can learn from "stuff".'}]},
+     {x:"They stacked middle, we went early, and Theo's call got lost in the noise.",q:2,w:'Specific, fair to everyone, and easy to picture.'},
+     {x:"Theo's call came too late, so that was pretty much that for us.",q:0,w:'It puts it all on one teammate, in public.'},
+     {x:'A lot of stuff just went wrong for us in that last map.',q:0,w:'Vague. Nobody can learn from "stuff".'}]},
    {k:'C',n:'Change',h:'What changed?',o:[
-     {x:'Now we mirror every call before we move, and this week we showed it.',q:2,w:'A real change you can point to. That is what makes a story stick.'},
-     {x:'We lost. Whatever.',q:0,w:'No change, no story.'},
-     {x:"We'll just try harder.",q:1,w:'Better than nothing, but "harder" is not a change anyone can see.'}]}
+     {x:'Now we mirror every call before we move.',q:2,w:'A real change you can point to. That is what makes a story stick.'},
+     {x:"We lost, so whatever, we'll see what happens next week.",q:0,w:'No change, no story.'},
+     {x:'We are all going to try a lot harder next time.',q:1,w:'Better than nothing, but "harder" is not a change anyone can see.'}]}
   ]};
-const GAME_3P={id:'brief',skill:'calm',time:35,title:'Pre-game brief: 3P',
+const GAME_STORY2=Object.assign({},GAME_STORY,{practice:1,title:'Story Shaping: second draft',sit:'One more pass at the story of the semi-final before the interview. Pick one line for each step.'});
+const GAME_3P={id:'brief',skill:'calm',time:40,title:'Pre-game brief: 3P',
   sit:'Two minutes before the grand final. The team is nervous and Mako cannot talk. Give a short brief: Purpose, Plan, Point.',
   slots:[
    {k:'P',n:'Purpose',h:'Why does this matter?',o:[
-     {x:"We've beaten this team before. Today is about playing the way we trained.",q:2,w:'Calm and sincere. It reminds people what they already do well.'},
-     {x:'If we lose this, the whole season was pointless.',q:0,w:'Pressure, not purpose. Nervous teams get tighter, not better.'},
-     {x:"It's a final, so, yeah.",q:0,w:'No reason to follow.'}]},
+     {x:"We've beaten this team. Today we play the way we trained.",q:2,w:'Calm and sincere. It reminds people what they already do well.'},
+     {x:'This is the grand final, and if we lose it the whole season was for nothing.',q:0,w:'Pressure, not purpose. Nervous teams get tighter, not better.'},
+     {x:'It is a big one today, so everyone needs to be at their best.',q:1,w:'True, but it gives nobody a reason. A purpose says why.'}]},
    {k:'P',n:'Plan',h:'What do we do?',o:[
-     {x:'Take middle early, Theo calls rotates, we mirror every call.',q:2,w:'Short, clear jobs that the team has practised.'},
-     {x:'Just go hard and see.',q:0,w:'That is a mood, not a plan.'},
-     {x:"Everything we've practised all season, every single drill, plus watch their support, plus the timer...",q:1,w:'Right ideas, far too many. Nobody can hold all that in a final.'}]},
+     {x:'Middle early. Theo calls rotates. We mirror every call.',q:2,w:'Short, clear jobs that the team has practised.'},
+     {x:'We go hard from the first round and see how they react to us.',q:0,w:'That is a mood, not a plan.'},
+     {x:'Everything from the whiteboard, every drill, plus watch their support and the timer.',q:1,w:'Right ideas, far too many. Nobody can hold all that in a final.'}]},
    {k:'P',n:'Point',h:'One thing to remember',o:[
-     {x:'If it gets loud: one voice, mirror it, then move.',q:2,w:'One point, easy to remember under stress.'},
-     {x:"Don't mess up.",q:0,w:'Tells people what to fear, not what to do.'},
-     {x:'Remember the ten things on the whiteboard.',q:0,w:'Ten is not one. Limit it.'}]}
+     {x:'If it gets loud: one voice, mirror, then move.',q:2,w:'One point, easy to remember under stress.'},
+     {x:'Whatever happens out there, do not be the one who messes it up.',q:0,w:'Tells people what to fear, not what to do.'},
+     {x:'Remember the main things we talked about this week.',q:1,w:'Which things? One point means one.'}]}
   ]};
-const GAME_CALM={id:'calm',skill:'calm',time:28,title:'CALM reset',
+const GAME_CALM={id:'calm',skill:'calm',time:34,title:'CALM reset',
   sit:'Tactical pause, 30 seconds. Jules is yelling, Theo has gone silent, Mako cannot talk, and you can hear your own voice getting louder.',
   slots:[
    {k:'C',n:'Check',h:'Notice your own stress first',o:[
-     {x:'(Take one slow breath. Notice that your voice is loud too.)',q:2,w:'You cannot calm a team you are adding stress to.'},
-     {x:'(Go straight to telling everyone what they did wrong.)',q:0,w:'Skipping the check means your stress leads the call.'},
-     {x:'(Ignore how you feel and talk faster.)',q:0,w:'Faster is not calmer.'}]},
+     {x:'(One slow breath. Notice your own voice is loud too.)',q:2,w:'You cannot calm a team you are adding stress to.'},
+     {x:'(Jump in quickly and tell everyone what went wrong that round.)',q:0,w:'Skipping the check means your stress leads the call.'},
+     {x:'(Tell yourself you are fine, and start talking.)',q:1,w:'You noticed the moment, but you did not actually check yourself.'}]},
    {k:'A',n:'Adjust',h:'Change your tone',o:[
-     {x:"Okay. We're fine. We're only two rounds behind.",q:2,w:'Slower and lower. People match the tone they hear.'},
-     {x:'EVERYONE CALM DOWN!',q:0,w:'Shouting "calm down" is never calm.'},
-     {x:'Ugh. Guys. Seriously.',q:0,w:'Frustration spreads just as fast as calm does.'}]},
+     {x:"Okay. We're fine. Two rounds behind, that's all.",q:2,w:'Slower and lower. People match the tone they hear.'},
+     {x:'EVERYONE just CALM DOWN for a second!',q:0,w:'Shouting "calm down" is never calm.'},
+     {x:'Guys, come on, seriously, we are better than this.',q:1,w:'Quieter than a shout, but the frustration still comes through.'}]},
    {k:'L',n:'Limit',h:'One main point',o:[
-     {x:"One job this round: hold B together. That's it.",q:2,w:'One point. Everyone can hold it in their head.'},
-     {x:'Okay so B, but also watch A and mid and their shield and the timer...',q:0,w:'Too many words under stress means nobody hears any of them.'},
-     {x:'Hold B, and maybe also A.',q:1,w:'Close. "Maybe" makes people unsure.'}]},
+     {x:'One job this round: hold B together.',q:2,w:'One point. Everyone can hold it in their head.'},
+     {x:'Hold B, but also watch A and mid and their shield and the timer.',q:0,w:'Too many words under stress means nobody hears any of them.'},
+     {x:'Hold B, and maybe A as well if it looks open.',q:1,w:'Close. "Maybe" makes people unsure.'}]},
    {k:'M',n:'Make space',h:'Let others talk',o:[
-     {x:'Theo, what are you seeing?',q:2,w:'Asking brings in information you did not have.'},
-     {x:'Nobody talk except me.',q:0,w:'Control, not influence. You lose what your team knows.'},
-     {x:'Any questions? No? Good.',q:0,w:'That is not space. That is a closed door.'}]}
+     {x:'Theo, what are you seeing?',q:2,w:'Asking one person by name brings in information you did not have.'},
+     {x:'Nobody talk except me until this round is over.',q:0,w:'Control, not influence. You lose what your team knows.'},
+     {x:'Everyone good with that?',q:1,w:'A start, but a yes or no question to the whole group rarely gets a real answer.'}]}
+  ]};
+const GAME_BARRIER={id:'barrier',skill:'listen',time:0,practice:1,title:'Name the barrier',
+  sit:'Coach Raman writes four listening barriers on the whiteboard: Distractions, Assumptions, Filling in gaps, Thinking ahead. Match one to each moment from your week.',
+  slots:[
+   {k:'1',n:'On the bus',h:"A clip hit its best play just as Dee's message arrived",o:[
+     {x:'Distractions',q:2,w:'The clip had half your attention. Half is not enough for three details.'},
+     {x:'Assumptions',q:0,w:'You had not decided what Dee meant. Your attention was just somewhere else.'},
+     {x:'Thinking ahead',q:1,w:'Close. But you were not planning a reply. You were watching something else.'}]},
+   {k:'2',n:'In science',h:"Kai gave three details while your head was at Thursday's training",o:[
+     {x:'Thinking ahead',q:2,w:'Your mind was already at Thursday night, so the words slid past.'},
+     {x:'Distractions',q:1,w:'Sort of. But the noise was in your own head. You were planning ahead.'},
+     {x:'Assumptions',q:0,w:'You were not guessing what Kai meant. You were somewhere else in your head.'}]},
+   {k:'3',n:'Tonight',h:'Theo said "hold" and Jules heard "push"',o:[
+     {x:'Assumptions',q:2,w:'Jules expected a push, so a push is what he heard.'},
+     {x:'Filling in gaps',q:2,w:'He caught "B" and guessed the rest. That fits too.'},
+     {x:'Distractions',q:1,w:'The game sound did not help, but mostly he heard what he expected.'}]}
   ]};
 
 /* practice minigames for side activities (they give at most 2 skill points) */
@@ -608,66 +663,66 @@ const GAME_SDV_P={id:'sdvp',skill:'clear',time:0,practice:1,title:'Practice with
   slots:[
    {k:'S',n:'State',h:'What are we doing?',o:[
      {x:'Our goal: take the left objective.',q:2,w:'One goal, said plainly.'},
-     {x:'Left, I guess? Or whatever feels right.',q:0,w:'If you are not sure, nobody else will be.'},
-     {x:'Left. Obviously.',q:1,w:'Clear enough, but "obviously" has a bit of a bite to it.'}]},
+     {x:'Left, I guess? Or wherever feels right once we are in there.',q:0,w:'If you are not sure, nobody else will be.'},
+     {x:'Left side, obviously, like we always do on this map.',q:1,w:'Clear enough, but "obviously" has a bit of a bite to it.'}]},
    {k:'D',n:'Describe',h:'Who does what?',o:[
-     {x:'Theo smokes, Jules and Mako go in, I watch the flank. We move on 2:00.',q:2,w:'Every job and a time.'},
-     {x:'Everyone go left.',q:0,w:'Four people, one instruction, lots of guessing.'},
-     {x:'Theo smoke, then go.',q:1,w:'A start, but there is nothing for the others and no timing.'}]},
+     {x:'Theo smokes. Jules and Mako go in. I watch flank. Move on 2:00.',q:2,w:'Every job and a time.'},
+     {x:'Everyone head left together and we will work it out there.',q:0,w:'Four people, one instruction, lots of guessing.'},
+     {x:'Theo, throw your smoke first, and then we all go.',q:1,w:'A start, but there is nothing for the others and no timing.'}]},
    {k:'V',n:'Verify',h:'Check it landed',o:[
-     {x:'Mako, say it back to me: who does what, and when?',q:2,w:'A repeat back shows what he heard.'},
-     {x:'Everyone good?',q:0,w:'Everyone says yes. You learn nothing.'},
-     {x:'Got it? Yep? Cool.',q:0,w:'That is a hope, not a check.'}]}
+     {x:'Mako, say it back: who does what, and when?',q:2,w:'A repeat back shows what he heard.'},
+     {x:'Is everyone good with all of that?',q:0,w:'Everyone says yes. You learn nothing.'},
+     {x:"Got it? Yep? Cool, let's run it.",q:0,w:'That is a hope, not a check.'}]}
   ]};
-const GAME_MIRROR_P={id:'mirrorp',skill:'listen',show:5,time:12,practice:1,who:'theo',title:"Theo's drill: say it back",
+const GAME_MIRROR_P={id:'mirrorp',skill:'listen',show:5,time:14,practice:1,who:'theo',title:"Theo's drill: say it back",
   sit:'Theo makes two calls. Each one shows for a few seconds, then it is gone. Pick what you would say back.',
   rounds:[
    {call:'Hold mid with me. Jules takes the left door.',ping:'Mum: dinner in 10!!',o:[
      {x:'So I hold mid with you, and Jules takes the left door? Is that right?',q:2},
-     {x:'So I take the left door and Jules holds mid?',q:0,w:'Swapped. A mirror catches this before anyone moves.'},
-     {x:'Holding!',q:0,w:'Half the call, and no check.'},
-     {x:'Yep.',q:0,w:'No mirror, so Theo cannot tell what you heard.'}]},
+     {x:'So I take the left door, and Jules holds mid with you? Is that right?',q:0,w:'Swapped. Good that you checked, so Theo can fix it before anyone moves.'},
+     {x:'Holding mid!',q:0,w:'Half the call, and no check.'},
+     {x:'Yep, sounds good.',q:0,w:'No mirror, so Theo cannot tell what you heard.'}]},
    {call:'Wait for the timer, then we both push right together.',ping:'Your ranked queue pops in another tab.',o:[
-     {x:'So we wait for the timer, then push right together? Is that right?',q:2},
-     {x:'So we push right now?',q:0,w:'You skipped "wait for the timer".'},
-     {x:'So we split up and push right?',q:0,w:'"Together" got lost in the noise.'},
-     {x:'Ok.',q:0,w:'No mirror, no check.'}]}
+     {x:'So wait for the timer, then push right together? Is that right?',q:2},
+     {x:'So we both push right together, starting now? Is that right?',q:0,w:'You skipped "wait for the timer".'},
+     {x:'So we wait for the timer, then split up and push right? Is that right?',q:0,w:'"Together" got lost in the noise.'},
+     {x:'Okay, got it.',q:0,w:'No mirror, no check.'}]}
   ]};
-const GAME_3P_KAI={id:'briefk',skill:'calm',time:30,practice:1,title:'Group brief: Purpose, Plan, Point',
+const GAME_3P_KAI={id:'briefk',skill:'calm',time:34,practice:1,title:'Group brief: Purpose, Plan, Point',
   sit:"Your science group has ten minutes to plan Monday's talk. Four people, four ideas, nobody listening. Kai looks at you. Give a quick brief.",
   slots:[
    {k:'P',n:'Purpose',h:'Why does this matter?',o:[
-     {x:"This talk is a third of our grade, and our research is good. Let's use it.",q:2,w:'A real reason, said calmly.'},
-     {x:"Let's just get it over with.",q:0,w:'No reason for anyone to care.'},
-     {x:"If we fail, it's Kai's fault. He picked bees.",q:0,w:'Blame, not purpose.'}]},
+     {x:"It's a third of our grade, and our research is good.",q:2,w:'A real reason, said calmly.'},
+     {x:'Can we please just get this over with so we can go to lunch?',q:0,w:'No reason for anyone to care.'},
+     {x:'We need to get this done properly today.',q:1,w:'Firm, but it does not say why it matters.'}]},
    {k:'P',n:'Plan',h:'What do we do?',o:[
-     {x:'Kai does the intro, I do the data, you two do the garden photos and the ending.',q:2,w:'Everyone has one clear job.'},
-     {x:'Everyone just say whatever.',q:0,w:'That is not a plan.'},
-     {x:'We do slides, a poster, a video, a quiz and maybe a song...',q:1,w:'Good energy, far too much.'}]},
+     {x:'Kai, intro. I do data. You two, garden photos and the ending.',q:2,w:'Everyone has one clear job.'},
+     {x:'Everyone just say whatever you remember when it is your turn.',q:0,w:'That is not a plan.'},
+     {x:'Slides, a poster, a video, a quiz, and maybe a song at the end?',q:1,w:'Good energy, far too much.'}]},
    {k:'P',n:'Point',h:'One thing to remember',o:[
-     {x:'One thing: we practise once together on Sunday.',q:2,w:'One point everyone can hold on to.'},
-     {x:"Don't embarrass us.",q:0,w:'Tells people what to fear, not what to do.'},
-     {x:'Just remember everything.',q:0,w:'Everything is not one thing.'}]}
+     {x:'One thing: we practise once on Sunday.',q:2,w:'One point everyone can hold on to.'},
+     {x:'Just try not to embarrass the rest of us on Monday.',q:0,w:'Tells people what to fear, not what to do.'},
+     {x:'Remember your part, the timing, the order and your sources.',q:1,w:'All useful, but four things is not one point.'}]}
   ]};
-const GAME_CALM_J={id:'calmj',skill:'calm',time:25,practice:1,title:'CALM with Jules',
+const GAME_CALM_J={id:'calmj',skill:'calm',time:30,practice:1,title:'CALM with Jules',
   sit:'Jules is still wound up about the semi-final. He is getting louder, and you can feel yourself getting annoyed too.',
   slots:[
    {k:'C',n:'Check',h:'Notice your own stress first',o:[
-     {x:'(Take a breath. Notice you are getting wound up as well.)',q:2,w:'You cannot calm someone while you are adding to it.'},
-     {x:'(Tell him to get over it.)',q:0,w:'Skipping the check means your stress does the talking.'},
-     {x:'(Match his energy and rant about Ridgeline.)',q:0,w:'Two loud people is not calmer.'}]},
+     {x:'(Take a breath. Notice you are wound up too.)',q:2,w:'You cannot calm someone while you are adding to it.'},
+     {x:'(Tell him to get over it, it was hours ago.)',q:0,w:'Skipping the check means your stress does the talking.'},
+     {x:'(Match his energy and have a rant about Ridgeline together.)',q:0,w:'Two loud people is not calmer.'}]},
    {k:'A',n:'Adjust',h:'Change your tone',o:[
      {x:"Yeah. It stings. I'm annoyed too.",q:2,w:'Calm and honest. He can actually hear it.'},
-     {x:'Mate, CHILL.',q:0,w:'Shouting "chill" is never chill.'},
-     {x:"Whatever, it's just a game.",q:0,w:'Brushing it off makes him feel unheard.'}]},
+     {x:'Mate, you need to CHILL, right now.',q:0,w:'Shouting "chill" is never chill.'},
+     {x:'Okay, okay. Deep breaths, Jules.',q:1,w:'A calm tone, but being told to breathe can feel like being managed.'}]},
    {k:'L',n:'Limit',h:'One main point',o:[
-     {x:"One thing for next week: we mirror calls. That's it.",q:2,w:'One point he can hold on to.'},
-     {x:'Next week we fix rotates, timing, comms, aim, utility...',q:0,w:'Too much. He will hear none of it.'},
-     {x:'We should probably talk more next time.',q:1,w:'Close, but vague.'}]},
+     {x:'One thing for next week: we mirror calls.',q:2,w:'One point he can hold on to.'},
+     {x:'Next week we fix rotates, timing, comms, aim and utility.',q:0,w:'Too much. He will hear none of it.'},
+     {x:'We should probably all just talk a bit more next time.',q:1,w:'Close, but vague.'}]},
    {k:'M',n:'Make space',h:'Let him talk',o:[
-     {x:'What do you think went wrong for you?',q:2,w:'Asking lets him work it through.'},
-     {x:'Anyway, my shot.',q:0,w:'The door closes.'},
-     {x:'You good now? Good.',q:0,w:'That is not space. That is a full stop.'}]}
+     {x:'What went wrong for you out there?',q:2,w:'Asking lets him work it through.'},
+     {x:'Anyway, enough about that. My shot.',q:0,w:'The door closes.'},
+     {x:"You good now? Good. Let's play.",q:0,w:'That is not space. That is a full stop.'}]}
   ]};
 
 /* ===== Version 3: every chapter is one full day ===== */
@@ -683,19 +738,55 @@ const CARD={
  t8:{c:'t',lbl:'Week 8 · Tool',h:'CALM for Influence',p:'Use it when things get tense.',steps:[['C','Check <em>your own stress first</em>'],['A','Adjust <em>your tone</em>'],['L','Limit <em>to one main point</em>'],['M','Make space <em>for others to talk</em>']]}
 };
 const CARDS={
- d1:{tag:'Day 1 · Friday',title:'The Message',cards:[CARD.spr,CARD.k1],reflect:'When does gaming help you, and when does it get in the way of other things?'},
- d2:{tag:'Day 2 · Saturday',title:'Clear Signal',cards:[CARD.k1,CARD.t2],reflect:'Think of a time a message got lost. What did they need to hear that was different?'},
- d3:{tag:'Day 3 · Wednesday',title:'Heard, Not Listened',cards:[CARD.k3,CARD.t2],reflect:'When do you stop listening properly? Which barrier gets you most, at school or in a game?'},
- d4:{tag:'Day 4 · Thursday',title:'Say It Back',cards:[CARD.t4,CARD.k7],reflect:'Where could you use Listen, Mirror, Check outside of gaming this week?'},
- d5:{tag:'Day 5 · Saturday',title:'The Story We Tell',cards:[CARD.k5,CARD.t6,CARD.t8],reflect:'Think of a game you lost. Tell it as a story with Someone, Want, Obstacle and Change.'},
- d6:{tag:'Day 6 · Saturday',title:'Second Chance',cards:[CARD.t6,CARD.t4],reflect:'How did keeping a promise, or breaking one, change how people treated you?'},
- d7:{tag:'Day 7 · Saturday',title:'Calm Under Pressure',cards:[CARD.k7,CARD.t8],reflect:'When have your words helped a group calm down or focus?'}
+ d1:{tag:'Day 1 · Friday',title:'The Message',cards:[CARD.spr,CARD.k1],reflect:'When does gaming help you, and when does it get in the way of other things?',links:[
+  [s=>s.f.sprDone,'You set one goal for aim training, played, then wrote down what worked. That is Set, Play, Review.',1],
+  [s=>s.f.tired,'You played ranked until after 2 am the night before a trial. Tonight, game time was not training time.',0],
+  [s=>s.f.rested,'Lights out by 10:30 before a big day. Playing with purpose includes knowing when to stop.',1],
+  [s=>s.f.checkedCoach,'You checked who Coach Raman was before you said yes. That is a good habit with any stranger online.',1],
+  [s=>s.f.walkDee,'You kept your word to Dee about the practice sheet. What you said and what you did matched.',1]]},
+ d2:{tag:'Day 2 · Saturday',title:'Clear Signal',cards:[CARD.k1,CARD.t2,CARD.spr],reflect:'Think of a time a message got lost. What did they need to hear that was different?',links:[
+  [s=>(s.g.sdv||0)>=.8,'Your round 2 call had a goal, a job for each person and a repeat back. That is State, Describe, Verify.',1],
+  [s=>s.g.sdv!==undefined&&s.g.sdv<.5,'In round 2 Theo said "yep" and went the wrong way. Verify means asking for a repeat back, not for a yes.',0],
+  [s=>s.f.theoClear,'When Theo was lost, you told him where to go and where you were. You made sure the message arrived.',1],
+  [s=>s.f.ggGood,'You got Jules to type gg and move on. Positive gaming is easiest to see straight after a loss.',1],
+  [s=>s.f.ggBad,'The reply to Northgate felt good for about a second. Coach Raman noticed, and so did everyone in the chat.',0]]},
+ d3:{tag:'Day 3 · Wednesday',title:'Heard, Not Listened',cards:[CARD.k3,CARD.t2],reflect:'When do you stop listening properly? Which barrier gets you most, at school or in a game?',links:[
+  [s=>s.f.busMirror,"On the bus you said Dee's message back to her before you answered. Coach has a name for that, and you will hear it tomorrow.",1],
+  [s=>s.f.busGuess,'On the bus you answered Dee without taking in the part about the lift. The clip was a distraction, and your brain filled in the gap.',0],
+  [s=>s.f.kaiOk,'You said Kai\'s three details back to him, and it caught the one he nearly got wrong himself.',1],
+  [s=>!s.f.kaiOk,"Kai's details slid past while you planned training in your head. That is the thinking ahead barrier.",0],
+  [s=>s.f.julesHold,'At the park you said back what Jules told you about being nervous. He will remember being heard.',1]]},
+ d4:{tag:'Day 4 · Thursday',title:'Say It Back',cards:[CARD.k3,CARD.t4,CARD.k7],reflect:'Where could you use Listen, Mirror, Check outside of gaming this week?',links:[
+  [s=>s.f.heldB,'You asked Theo to say it again before anyone moved. That one check won the round.',1],
+  [s=>s.f.pushedB,'You heard "B" and went. A two second mirror would have caught the word "hold".',0],
+  [s=>(s.g.briefk||0)>=.8,'Your science group got a reason, a job each and one thing to remember. That is a 3P brief, used at school.',1],
+  [s=>s.f.toldAdult||s.f.toldCoach,'An adult you did not know asked you to keep a secret, and you told someone you trust. That is the right move every time.',1],
+  [s=>!(s.f.toldAdult||s.f.toldCoach),'Ryder asked you to keep his offer from your coach. An adult asking for a secret is a warning sign, and worth telling someone about.',0]]},
+ d5:{tag:'Day 5 · Saturday',title:'The Story We Tell',cards:[CARD.k5,CARD.t6,CARD.t8],reflect:'Think of a game you lost. Tell it as a story with Someone, Want, Obstacle and Change.',links:[
+  [s=>(s.g.story||0)>=.75,'You shaped the loss into Someone, Want, Obstacle and Change without blaming anyone.',1],
+  [s=>s.g.story!==undefined&&s.g.story<.5,'Your story of the semi-final leaned on blame or stayed vague. Try naming one clear obstacle and one change.',0],
+  [s=>s.f.blameFix,'When the blame started, you made it a team problem. That is where a better story begins.',1],
+  [s=>s.f.semiCall,'With one round left you gave a goal, gave jobs and asked for a repeat back. The tool still works under pressure.',1],
+  [s=>(s.g.calmj||0)>=.75,'At the park you used CALM with Jules. You checked yourself first, then gave him room to talk.',1],
+  [s=>s.f.posterBad,'The poster got done without you. School comes first is a team rule, and Coach Raman checked.',0]]},
+ d6:{tag:'Day 6 · Saturday',title:'Second Chance',cards:[CARD.t4,CARD.t6],reflect:'How did keeping a promise, or breaking one, change how people treated you?',links:[
+  [s=>(s.g.mirrorr||0)>=.6,"In a loud arena you said Theo's calls back before you moved. Listen, Mirror, Check held under pressure.",1],
+  [s=>s.g.mirrorr!==undefined&&s.g.mirrorr<.6,"Some of Theo's calls got lost in the noise. The louder it gets, the more the mirror matters.",0],
+  [s=>s.f.keptPromise,'You promised Dee the study group and you turned up. People remember a kept promise.',1],
+  [s=>s.f.brokePromise,'You promised Dee, then did something else. People remember that too.',0],
+  [s=>s.f.respectOpp,'On stream you gave Ridgeline credit. Respect for opponents is part of how you tell the story.',1]]},
+ d7:{tag:'Day 7 · Saturday',title:'Calm Under Pressure',cards:[CARD.k7,CARD.t8],reflect:'When have your words helped a group calm down or focus?',links:[
+  [s=>(s.g.brief||0)>=.8,'Your brief gave the team a Purpose, a Plan and one Point, and their shoulders dropped.',1],
+  [s=>s.g.brief!==undefined&&s.g.brief<.5,'Your brief left the team unsure what to do. A Purpose, a Plan and one Point is all it needs.',0],
+  [s=>(s.g.calm||0)>=.75,'In the pause you checked yourself first, gave one job, and asked Theo what he was seeing. That is CALM.',1],
+  [s=>s.g.calm!==undefined&&s.g.calm<.5,"The pause ended louder than it started. CALM begins with checking your own stress, before anyone else's.",0],
+  [s=>s.f.aCall,"You said Theo's information back before you acted on it. That check found the winning call.",1]]}
 };
 const HOME=(day,time,place)=>SC({v:'home',day,time,place:place||'Your bedroom'});
 const PH=(contact,day,time,bg,place)=>SC({v:'phone',bg:bg||'home',contact,day,time,place:place||'Home'});
 const AT=(v,day,time,place,cast)=>SC({v,day,time,place,cast:cast||[]});
 const ENERGYCHECK=DYN(s=>s.v.energy<=1?[N('You are running on empty. Everything feels a step slow, and the timers will feel it too.')]:s.v.energy>=5?[N('You feel fresh. Clear head, steady hands.')]:[]);
-const BROKE=(n,day,time)=>DYN(s=>s.f.promised?[FX({dee:-n}),PH('Dee',day,time),L('dee','saved you a seat. guess not.'),N('You promised Dee. She will remember that.')]:[]);
+const BROKE=(n,day,time)=>DYN(s=>s.f.promised?[FLAG('brokePromise'),FX({dee:-n}),PH('Dee',day,time),L('dee','saved you a seat. guess not.'),N('You promised Dee. She will remember that.')]:[]);
 
 const CHAPTERS=[
 /* DAY 1 */
@@ -709,9 +800,11 @@ const CHAPTERS=[
  TUT('This is a choice. Pick how you reply. People will remember what you say, and after each choice you will see what you gained and lost.'),
  C(0,'Reply to Coach Raman',[
   O(`Yes! I'd love to. What should I bring?`,{coach:1,clear:1},[L('coach',`Your headset, your settings written down, and a good night's sleep.`)]),
-  O('Sorry, who is this? How did you find my profile?',{coach:1,respect:1},[L('coach',`Good question to ask. I messaged through the State Youth League scouting page. Check my name on the Comets website before you reply.`),YOU(`Okay, found you. Yes, I'm in!`)]),
+  O('Sorry, who is this? How did you find my profile?',{coach:1,respect:1},[L('coach',`Good question to ask. I messaged through the State Youth League scouting page. Check my name on the Comets website before you reply.`),YOU(`Okay, found you. Yes, I'm in!`),FLAG('checkedCoach')]),
   O('lol sure. I carry every lobby anyway.',{coach:-2,respect:-1},[L('coach',`Confidence is good. Let's see how you go in a team that talks back.`)],'coach')
  ]),
+ L('coach',`One thing before tomorrow. Around here, game time is training time. Set one goal before you play. Play. Then Review what happened.`),
+ L('coach',`And a message only works if what you meant is what the other person heard. You already do that with strangers. I want to see it in a team.`),
  PH('Dee','Friday','Morning','home','Your bedroom'),
  L('dee','morning!! maths test today'),
  L('dee',`you said you'd go through the practice sheet with me`),
@@ -737,7 +830,7 @@ const CHAPTERS=[
  TUT('This is the town map. Lit places are open right now. The tag on each option shows what it costs.'),
  SLOT('Friday','Day','After school. The trial is tomorrow. Where do you go?',[
   D('library','Start the science poster with Kai at the library',{energy:-2,purpose:1},[AT('library','Friday','Day','Library · Project table',['kai']),L('kai','You came! Poster on how bees use the school garden. Want to do the research or the layout?'),N('An hour later you have a plan, a title and two sources each.'),L('kai','Same time next week?'),FLAG('kaiStart')]),
-  D('home','Aim training, then write your settings down for the trial',{energy:-2,purpose:1},[HOME('Friday','Day'),N('Sensitivity, keybinds, crosshair. All on one page, in your bag.'),FLAG('settings')]),
+  D('home','Aim training, then write your settings down for the trial',{energy:-2,purpose:1},[HOME('Friday','Day'),N('You Set one goal: smoother tracking. You Play for twenty minutes. Then you Review, and write down what worked.'),N('Sensitivity, keybinds, crosshair. All on one page, in your bag.'),FLAG('settings'),FLAG('sprDone')]),
   REST('home','Go home and chill',[HOME('Friday','Day'),N('You lie on your bed and watch clips until dinner.')])
  ]),
  SLOT('Friday','Night','The trial is tomorrow at 10. How do you spend tonight?',[
@@ -781,7 +874,7 @@ const CHAPTERS=[
  L('theo','Wait, where are we going?'),
  C(5,'Theo is lost',[
   O('Middle! Now!',{},[N('Theo runs, but to the wrong middle. Dockside has two.')]),
-  O(`Theo, middle objective. I'm on your left, come to me.`,{clear:1,theo:1},[N('Theo finds you. Too late for the objective, but you are together.')]),
+  O(`Theo, middle objective. I'm on your left, come to me.`,{clear:1,theo:1},[N('Theo finds you. Too late for the objective, but you are together.'),FLAG('theoClear')]),
   O('Keep up, Theo.',{theo:-2,positive:-1},[N('Theo goes quiet for the rest of the round.')],'theo')
  ],O('(Say nothing)',{theo:-1},[N('Nobody answers him. Theo wanders off to the left side on his own.')])),
  N('Northgate take the middle objective. Round lost.'),SCORE(0,1,2),
@@ -808,17 +901,20 @@ const CHAPTERS=[
  L('opp','ez. academy kids lol'),
  L('jules',`Oh, I'm typing something back.`),
  C(7,'Jules is about to reply',[
-  O('Leave it, Jules. Type gg and we move on.',{positive:1,mako:1},[L('jules','Fine. gg.'),N('Mako gives you a quiet thumbs up.')]),
-  O('Do it. They deserve it.',{positive:-2,coach:-2,jules:1},[N('Jules sends it. Coach Raman reads it over his shoulder and sighs.'),L('coach',`That's not who we are. We'll talk about it later.`)],'coach'),
-  O(`Type gg. Then let's look at the rounds where our calls worked.`,{positive:1,purpose:1,coach:1,jules:1},[L('jules','...yeah, okay. gg.'),L('coach',`That's the attitude.`)])
+  O('Leave it, Jules. Type gg and we move on.',{positive:1,mako:1},[L('jules','Fine. gg.'),N('Mako gives you a quiet thumbs up.'),FLAG('ggGood')]),
+  O('Do it. They deserve it.',{positive:-2,coach:-2,jules:1},[N('Jules sends it. Coach Raman reads it over his shoulder and sighs.'),L('coach',`That's not who we are. We'll talk about it later.`),FLAG('ggBad')],'coach'),
+  O(`Type gg. Then let's look at the rounds where our calls worked.`,{positive:1,purpose:1,coach:1,jules:1},[L('jules','...yeah, okay. gg.'),L('coach',`That's the attitude.`),FLAG('ggGood')])
  ],O('(Say nothing)',{positive:-1},[N('Jules sends something rude. The chat lights up. Nobody feels any better.')])),
- AT('academy','Saturday','Day','Comets base · After the scrim',['coach']),
+ AT('academy','Saturday','Day','Comets base · After the scrim',['sam','coach']),
+ L('sam',`Hi, I'm Sam, the analyst. Quick review before anyone leaves. We Set a goal for that scrim: middle early. We Played. Now we Review.`),
+ DYN(s=>[L('sam',(s.g.sdv||0)>=.5?'Round 1, nobody heard the plan. Round 2, it got stated, described and checked. Same four players, different round. That is the whole review.':'Round 1, nobody heard the plan. Round 2, the call was clearer, but nobody checked it had landed. That is the one thing to fix.')]),
+ L('sam','Set, Play, Review. We do it after every match, win or lose.'),
  L('coach',`{name}. A word?`),
  DYN(s=>[L('coach',s.v.clear>=3?`You made your calls clear, and you checked they landed. That's the part I can't teach in one day.`:`Your calls got better as the day went on. That's what I wanted to see.`)]),
  L('coach',`We'd like you back. Training is Thursday nights, plus Saturday matches. And school comes first. That's a team rule.`),
  N('You are in the academy.'),
  SLOT('Saturday','Day','It is 2 pm. The rest of the day is yours.',[
-  D('park','Hot chips and hoops at the park with Jules and Mako',{energy:-2,jules:2,mako:1},[AT('park','Saturday','Day','Park · Courts',['jules','mako']),L('jules','First to eleven. Loser buys chips.'),N('Mako barely talks, but he passes you the ball every time you are open.'),L('mako','Good calls today, by the way.')]),
+  D('park','Hot chips and hoops at the park with Jules and Mako',{energy:-2,jules:2,mako:2},[AT('park','Saturday','Day','Park · Courts',['jules','mako']),L('jules','First to eleven. Loser buys chips.'),N('Mako barely talks, but he passes you the ball every time you are open.'),L('mako','Good calls today, by the way.')]),
   D('academy','Stay back and practise calls with Mako in a custom lobby',{energy:-2,mako:1},[AT('academy','Saturday','Day','Comets base · Custom lobby',['mako']),L('mako',`Call this one for me. I'll play it exactly how you say it.`),G('build',{data:GAME_SDV_P}),DYN(s=>(s.g.sdvp||0)>=.8?[L('mako','Clean. I would follow that call.'),FX({mako:2})]:[L('mako','Getting there. Check it landed, every time.')])]),
   REST('home','Head home and rest',[HOME('Saturday','Day'),N('You fall asleep on the couch for an hour. It is the best sleep of your life.')])
  ]),
@@ -856,10 +952,10 @@ const CHAPTERS=[
  L('dee',`and she can't drive me so I need a lift both ways`),
  N(`The clip hits the best play of the match just as Dee's last message arrives.`),
  C(10,'Reply to Dee',[
-  O('Yes!! See you there!',{listen:-1},[L('dee','...did you read the bit about the lift?'),N(`You didn't. Your brain filled in the gap with what it wanted to hear.`)]),
-  O(`So you can come on the 14th if you're home before 6, and you need a lift both ways? I'll ask Dad if we can drive you.`,{listen:2,dee:2},[L('dee',`YES. that's exactly it. thank you`),FLAG('lift')],'dee'),
+  O('Yes!! See you there!',{listen:-1},[L('dee','...did you read the bit about the lift?'),N(`You didn't. Your brain filled in the gap with what it wanted to hear.`),FLAG('busGuess')]),
+  O(`So you can come on the 14th if you're home before 6, and you need a lift both ways? I'll ask Dad if we can drive you.`,{listen:2,dee:2},[L('dee',`YES. that's exactly it. thank you`),FLAG('lift'),FLAG('busMirror')],'dee'),
   O('Sorry, I was watching a clip. What did you say?',{listen:1},[L('dee','lol. scroll up. 14th, home before 6, need a lift'),YOU(`Got it. I'll ask Dad about the lift.`),FLAG('lift'),N('Not perfect, but asking beat guessing.')])
- ],O('(Send a thumbs up)',{listen:-1,dee:-2},[L('dee','a thumbs up. ok.')],'dee')),
+ ],O('(Send a thumbs up)',{listen:-1,dee:-2},[L('dee','a thumbs up. ok.'),FLAG('busGuess')],'dee')),
  AT('school','Wednesday','Day','School · Science',['kai']),
  N(`Group project time. Your partner Kai has just come back from Ms Okafor's desk. Your head is already at Thursday's training.`),
  DYN(s=>s.f.kaiStart?[L('kai','Good news first: we already have two sources each from Friday.')]:[]),
@@ -871,7 +967,7 @@ const CHAPTERS=[
  ],O('(Keep planning training in your head)',{listen:-1},[N(`Kai's words slide straight past. That was the "thinking ahead" barrier.`)])),
  SLOT('Wednesday','Day','After school. Where do you go?',[
   D('home',`Duo queue with Theo: he calls, you say it back`,{energy:-2,theo:2},[PH('Theo','Wednesday','Day','home','Home · Voice chat'),L('theo','Short calls only. I say it, you say it back.'),G('mirror',{data:GAME_MIRROR_P}),DYN(s=>(s.g.mirrorp||0)>=.99?[L('theo','You are easy to talk to in game. That is rare.'),FX({theo:2})]:[L('theo','Good. Again sometime.')])]),
-  D('library','Finish the poster with Kai at the library',{energy:-2,purpose:1},[AT('library','Wednesday','Day','Library · Project table',['kai']),
+  D('library','Finish the poster with Kai at the library',{energy:-2,purpose:1},[AT('library','Wednesday','Day','Library · Project table',['kai']),FLAG('posterWent'),
    DYN(s=>s.f.kaiOk?[L('kai','Three sources each, poster Friday. You remembered. We are basically done.'),N('Finished by 5. Kai offers to do the slides for Monday.'),FX({purpose:1}),FLAG('poster')]
     :[L('kai','Wait, you only found two sources? And the talk is Monday, not Friday.'),N('You spend the first half hour fixing what you misheard. Listening properly the first time would have been quicker.')])]),
   REST('home','Go home and rest',[HOME('Wednesday','Day'),N('Snacks, couch, one episode. Nothing else.')])
@@ -885,7 +981,7 @@ const CHAPTERS=[
 ]},
 
 /* DAY 4 */
-{key:'d4',ch:'Day 4',name:'Say It Back',tags:[['t','Wk 4'],['k','Wk 7']],blurb:'Thursday. A group that will not listen, and a quiet caller.',nodes:[
+{key:'d4',ch:'Day 4',name:'Say It Back',tags:[['k','Wk 3'],['t','Wk 4'],['k','Wk 7']],blurb:'Thursday. A group that will not listen, and a quiet caller.',nodes:[
  HOME('Thursday','Morning'),
  N('Thursday. Training tonight at 6.'),
  SLOT('Thursday','Morning','Before school. Where do you go?',[
@@ -920,30 +1016,27 @@ const CHAPTERS=[
  L('jules','Pushing B? Okay, going!'),
  N('Jules is already moving. You heard something about B. But was it push, or hold?'),
  C(5,'Quick',[
-  O('Jules, wait. Theo, say again?',{listen:1,theo:1},[L('theo',`Hold. Don't push. Hold.`),DYN(s=>s.f.julesHold?[L('jules','Holding. Like you said at the park.'),FX({jules:1})]:[]),N('Jules stops at the corner just in time. The other team walks into your crossfire.'),SCORE(4,2,7),N('Round won.'),FLAG('heldB')]),
-  O('Pushing with you, Jules!',{listen:-1},[N('You and Jules run straight into four players waiting at B.'),SCORE(3,3,7),N('Round lost.')]),
-  O('Follow Jules, he usually knows.',{listen:-1,theo:-2},[N('You follow Jules into a full stack at B.'),SCORE(3,3,7),N('Round lost.')])
+  O('Jules, wait. Theo, say that again?',{listen:1,theo:1},[L('theo',`Hold. Don't push. Hold.`),DYN(s=>s.f.julesHold?[L('jules','Holding. Like you said at the park.'),FX({jules:1})]:[]),N('Jules stops at the corner just in time. The other team walks into your crossfire.'),SCORE(4,2,7),N('Round won.'),FLAG('heldB')]),
+  O('Pushing with you, Jules!',{listen:-1},[N('You and Jules run straight into four players waiting at B.'),SCORE(3,3,7),N('Round lost.'),FLAG('pushedB')]),
+  O('Follow Jules, he usually knows.',{listen:-1,theo:-2},[N('You follow Jules into a full stack at B.'),SCORE(3,3,7),N('Round lost.'),FLAG('pushedB')])
  ],O('(Freeze)',{},[N('You freeze. Jules goes in alone and is eliminated.'),SCORE(3,3,7),N('Round lost.')])),
  AT('academy','Thursday','Evening','Comets base · Tactical pause',['coach','jules','theo']),
  L('coach','Pause. Jules, what did Theo say?'),
  L('jules','Push B.'),
  L('theo','I said hold.'),
  L('coach',`Hearing is sound reaching you. Listening is working out what it means. Your brain loves to guess, so it hears what it expects.`),
- L('coach',`{name}, which barrier got us there?`),
- C(0,'Which barrier?',[
-  O('Assumptions. Jules decided what Theo meant before he finished.',{listen:1},[L('coach',`Yes. He'd made up his mind before Theo got to "hold".`)]),
-  O('Distractions. Game sound, and everyone talking at once.',{listen:1},[L('coach','A big one. Noise makes the gaps bigger.')]),
-  O('Filling in gaps. He heard "B" and guessed the rest.',{listen:1},[L('coach','Right. "B" plus a guess equals "push".')]),
-  O('Thinking ahead. He was planning his play instead of listening.',{listen:1},[L('coach',`Could be. When you're planning your reply, you've stopped listening.`)])
- ]),
- L('coach',`Honestly, it's usually a mix. So here's the fix. Listen, Mirror, Check.`),
+ L('coach',`There are four barriers that get in the way: distractions, assumptions, filling in gaps, and thinking ahead.`),
+ L('coach',`{name}, you have had a busy week. I want you to name the barrier in three moments, including the one we just watched.`),
+ G('build',{data:GAME_BARRIER}),
+ DYN(s=>(s.g.barrier||0)>=.8?[L('coach','Three from three. You are starting to notice how you listen, and that is most of the work.'),FX({coach:1})]:[L('coach','Close. They overlap, and it is usually a mix. What matters is catching yourself doing it.')]),
+ L('coach',`So here's the fix. Listen, Mirror, Check.`),
  L('coach',`Listen fully. Mirror it back: "So what I heard is..." Then Check: "Is that right?"`),
  L('coach',`Mirroring isn't agreeing. It just shows you understood.`),
  L('theo',`Can we try it? I'll make the calls.`),
  SC({v:'game',day:'Thursday',time:'Evening',place:'Training scrim · Drill',opp:'ACADEMY B'}),
  G('mirror',{data:GAME_MIRROR}),
  DYN(s=>{const g=s.g.mirror||0;
-  return g>=.6?[N(`By the end of the night, Jules is mirroring calls without being asked. Theo's voice is getting louder, and steadier.`),FX({theo:1})]
+  return g>=.6?[N(`By the end of the night, Jules is mirroring calls without being asked. Theo's voice is getting louder, and steadier.`),L('mako','That is the cleanest comms we have had all season. Good work, both of you.'),FX({theo:1,mako:1})]
    :[N('It feels clunky. Accuracy always feels slower at the start. But the team is talking to each other now, not over each other.')];}),
  PH('Theo','Thursday','Night'),
  L('theo','hey. thanks for listening tonight'),
@@ -956,10 +1049,18 @@ const CHAPTERS=[
  PH('Unknown number','Thursday','Night'),
  L('ryder',`Hey {name}. Ryder, team manager at Blaze Syndicate. Saw your clips from the Comets scrims.`),
  L('ryder',`We pay our players. No curfews, no school rules, no "review sessions". Just play. Interested?`),
+ L('ryder',`Keep this between us for now, yeah? No need to tell your coach.`),
  C(10,'Reply to Ryder',[
   O(`Thanks, but I'm focused on the Comets right now.`,{purpose:1},[L('ryder',`Respect. Offer's open till your grand final.`)]),
-  O('Maybe. Tell me more.',{},[FLAG('ryder'),L('ryder',`Let's talk after your final. Don't mention it to your coach yet, yeah?`),N('Something about that last line sits funny.')])
+  O('Maybe. Tell me more.',{},[FLAG('ryder'),L('ryder',`Let's talk after your final. Just us.`)]),
+  O('Who gave you my number?',{respect:1},[L('ryder','I have my ways. Relax, it is all good.'),N('That is not an answer.')])
  ],O('(Leave it on read)',{},[L('ryder',`No rush. Offer's open till your grand final.`)])),
+ N('An adult you have never met just asked you to keep a secret from your coach. Something about that sits funny.'),
+ C(0,'Ryder wants it kept from your coach. What do you do?',[
+  O('Show the messages to Dad before bed.',{respect:1,purpose:1},[HOME('Thursday','Night','Kitchen'),N('Dad reads the messages twice.'),N('"Thanks for showing me," he says. "A real offer goes through your coach and your parents. Anyone who wants it kept secret is telling you something about themselves."'),FLAG('toldAdult')]),
+  O('Screenshot them to show Coach Raman on Saturday.',{coach:2,respect:1},[N('You save the screenshots to a folder called "ask Coach".'),FLAG('toldCoach')],'coach'),
+  O('Keep it to yourself for now.',{},[N('You put the phone face down. The message is still there in the morning.')])
+ ]),
  {t:'end'}
 ]},
 
@@ -969,21 +1070,35 @@ const CHAPTERS=[
  N('Saturday. Upper semi-final against Ridgeline at 11.'),
  SLOT('Saturday','Morning','Before the semi-final. Where do you go?',[
   D('home','Warm up with Theo in a duo game',{energy:-1,theo:2,listen:1},[PH('Theo','Saturday','Morning','home','Home · Voice chat'),L('theo','Two games. Short calls.'),N('Two wins. You mirror every call without thinking.')]),
-  D('home','Message the team: "Talk early, back each other. Let us go."',{energy:-1,mako:1,jules:1,positive:1},[PH('Comets team chat','Saturday','Morning'),L('jules','LET US GO'),L('mako','(thumbs up)')]),
+  D('home','Message the team: "Talk early, back each other. Let us go."',{energy:-1,mako:2,jules:1,positive:1},[PH('Comets team chat','Saturday','Morning'),L('jules','LET US GO'),L('mako','(thumbs up)')]),
   REST('arena','Head to the arena early and sit quietly',[AT('arena','Saturday','Morning','Arena · Players area'),N('You watch the crowd come in and breathe slowly.')])
  ]),
  SC({v:'game',day:'Saturday',time:'Day',place:'Upper semi-final vs Ridgeline · Dockside',opp:'RIDGELINE'}),SCORE(11,12,24),
  ENERGYCHECK,
- N('Map 3, last round. Ridgeline take the final objective.'),SCORE(11,13,'FINAL'),
+ N('Map 3. Ridgeline are one round from winning it.'),
+ L('mako',`Last round. {name}, quick. What are we doing?`),
+ C(8,'Mako wants a call',[
+  O('Middle, together. Jules first, Theo and I follow. Theo, say it back?',{clear:1,mako:1},[L('theo','Middle. Jules first, you and me behind.'),N('It is the cleanest round you have played all map. Ridgeline still take it, by one fight.'),FLAG('semiCall')],'mako'),
+  O(`Just play it like we practised. We've got this.`,{},[N('Everyone remembers the practice a little differently.')]),
+  O(`I don't know. You're the captain.`,{mako:-1},[L('mako','...right. Middle, I guess.')])
+ ],O('(Say nothing)',{},[N('Nobody calls it. Four players, four plans.')])),
+ N('Ridgeline take the final objective.'),SCORE(11,13,'FINAL'),
  N('Match over. The Comets drop to the lower bracket.'),
  L('jules',`That's on me. I pushed too early. No, actually, Theo, your call was late. If you'd called it earlier...`),
  L('theo','...'),
  C(7,'The blame is starting',[
-  O(`It wasn't all you, Jules, and it wasn't Theo. We all missed the rotate. We fix it together.`,{jules:1,theo:2,positive:1},[L('jules','...yeah. Okay.')],'jules'),
+  O(`It wasn't all you, Jules, and it wasn't Theo. We all missed the rotate. We fix it together.`,{jules:1,theo:2,positive:1},[L('jules','...yeah. Okay.'),FLAG('blameFix')],'jules'),
   O(`Stop. Blaming won't win the next match.`,{positive:1,jules:-1},[L('jules','Fine.'),N('It works, but it lands a bit sharp. Jules goes quiet.')]),
   O('Yeah, Theo was late.',{theo:-3,positive:-1},[N(`Theo takes his headset off and doesn't put it back on.`)],'theo')
  ],O('(Say nothing)',{theo:-1,positive:-1},[N('Nobody says anything. Jules keeps going. Theo just stares at his screen.')])),
  AT('academy','Saturday','Day','Comets base · Review',['sam','coach','jules','theo']),
+ L('coach',`Before review. School comes first, that's the team rule. {name}, the bee poster was due yesterday. How did it go?`),
+ DYN(s=>s.f.poster?[YOU('Finished on Wednesday and handed in. Kai is doing the slides.'),L('coach','Good. That is what I like to hear.'),FX({coach:1,purpose:1})]
+  :s.f.posterWent?[YOU('Handed in. It got a bit rushed at the end.'),L('coach','Handed in is handed in. Start earlier next time.')]
+  :s.f.kaiStart?[YOU('We started it together last Friday. Kai finished it without me.'),L('coach','Then you owe Kai one. Finish what you start.'),FLAG('posterBad')]
+  :[YOU('Kai did it. I... did not really help.'),L('coach','Then you owe Kai one. On this team, school comes before scrims.'),FX({coach:-1,purpose:-1}),FLAG('posterBad')]),
+ DYN(s=>s.f.toldCoach?[YOU('Also, Coach. Someone from Blaze Syndicate messaged me on Thursday. He said not to tell you.'),L('coach','Thank you for showing me. That took some nerve.'),L('coach','For everyone: a real offer comes through me and your parents. If an adult online asks you to keep a secret, that is the moment to tell someone.')]
+  :s.f.toldAdult?[N('Your dad rang Coach Raman on Friday about the Blaze messages. She gives you a nod as you sit down.'),FX({coach:1})]:[]),
  L('sam',`Okay. Set, Play, Review. We Set a goal for that map: take middle early. We Played. Now we Review. One round, properly.`),
  L('sam','Which round do we look at?'),
  C(0,'Pick a round to review',[
@@ -1020,30 +1135,32 @@ const CHAPTERS=[
  HOME('Saturday','Morning'),
  N('A week later. Exam week is done. The lower bracket final against Ridgeline is at 2.'),
  SLOT('Saturday','Morning','Saturday morning. Your match is at 2. Where do you go?',[
-  D('library','Study group with Dee at the library',{energy:-1,dee:2,purpose:1},[AT('library','Saturday','Morning','Library · Study group',['dee']),DYN(s=>[L('dee',s.f.promised?'You actually came. I owe you hot chips.':`Oh! You came. Okay, sit. We're on chapter 6.`)]),N('Two hours later, the exam review is done and you still have time to get to the arena.')],null,s=>s.v.dee<0?'Dee is not answering your messages':null),
-  D('academy','Extra review with Sam before the match',{energy:-1,story:1,coach:1},[AT('academy','Saturday','Morning','Comets base · Review room',['sam']),L('sam',`Last time we mirrored nothing. Today, every call gets said back. That's the plan.`),BROKE(3,'Saturday','Morning')]),
+  D('library','Study group with Dee at the library',{energy:-1,dee:2,purpose:1},[AT('library','Saturday','Morning','Library · Study group',['dee']),DYN(s=>[L('dee',s.f.promised?'You actually came. I owe you hot chips.':`Oh! You came. Okay, sit. We're on chapter 6.`)]),N('Two hours later, the exam review is done and you still have time to get to the arena.'),DYN(s=>s.f.promised?[FLAG('keptPromise')]:[])],null,s=>s.v.dee<0?'Dee is not answering your messages':null),
+  D('academy','Extra review with Sam before the match',{energy:-1,story:1,coach:1},[AT('academy','Saturday','Morning','Comets base · Review room',['sam']),L('sam',`Last time we mirrored nothing. Today, every call gets said back. That's the plan.`),L('sam','You have the interview after. Want one more pass at your story?'),G('build',{data:GAME_STORY2}),BROKE(3,'Saturday','Morning')]),
   D('home','Ranked warm-up',{energy:-3,purpose:-1},[HOME('Saturday','Morning'),N('Three games become five. You leave late.'),BROKE(3,'Saturday','Morning')]),
   REST('home','Sleep in and rest',[HOME('Saturday','Morning'),N('You sleep until 10. It feels great.'),BROKE(2,'Saturday','Morning')])
  ]),
  SC({v:'game',day:'Saturday',time:'Day',place:'Lower bracket final vs Ridgeline',opp:'RIDGELINE'}),SCORE(1,1,'MAP 3'),
  ENERGYCHECK,
- N('Ridgeline again. This time the rotate holds, and every call gets mirrored.'),SCORE(2,1,'FINAL'),
- L('mako',`WE'RE IN THE GRAND FINAL!`),
+ N('Ridgeline again. One map each. The arena is loud, and Theo is calling.'),
+ G('mirror',{data:GAME_MIRROR_R}),
+ DYN(s=>(s.g.mirrorr||0)>=.6?[N('Every call gets said back before anyone moves. This time the rotate holds.'),SCORE(2,1,'FINAL'),FX({theo:1}),L('mako',`WE'RE IN THE GRAND FINAL!`)]
+  :[N('A couple of calls get lost in the noise, and the map goes to the very last round. Jules wins it with two seconds on the clock.'),SCORE(2,1,'FINAL'),L('mako',`WE'RE IN THE GRAND FINAL! Just.`)]),
  SC({v:'stream',day:'Saturday',time:'Day',place:'Arena · Stream desk',cast:['host']}),
  L('host','Congratulations! Last week this same team beat you. What changed?'),
- DYN(s=>{const p=s.picks.story||[];const g=s.g.story||0;const out=[YOU(p.join(' ')||'Um. We just did better?')];
+ DYN(s=>{const p=s.picks.story||[];const g=s.g.story||0;const out=[YOU(p.length?p.join(' ')+(g>=.75?' And today, you saw it.':''):'Um. We just did better?')];
   if(g>=.75)out.push(L('host',`That's a great story. People at home can picture exactly what happened.`),FX({story:1,coach:2}));
   else if(g>=.5)out.push(L('host','Ha, okay! Sounds like you learned a lot.'));
   else out.push(N('The host waits for more. The chat on stream scrolls past: "what did they even say?"'));
   return out;}),
  L('host','And what do you think of Ridgeline?'),
  C(8,'Answer on stream',[
-  O(`They're a great team. They beat us fair last week, and they made us better.`,{respect:2,positive:1},[L('host','Classy. Love it.')]),
+  O(`They're a great team. They beat us fair last week, and they made us better.`,{respect:2,positive:1},[L('host','Classy. Love it.'),FLAG('respectOpp')]),
   O('They talk a lot for a team that just lost.',{respect:-2,coach:-3},[N('The stream chat goes wild. Coach Raman, watching from the side, does not look happy.')],'coach'),
   O('Honestly, I just focus on our team.',{respect:1},[L('host','Fair enough!')])
  ],O('(Say nothing)',{},[L('host','Lost for words! Big day.')])),
  SLOT('Saturday','Evening','You are in the grand final, next Saturday. How do you spend tonight?',[
-  D('park','Celebrate with the team: hot chips at the park',{energy:-2,jules:1,mako:1,theo:1},[AT('park','Saturday','Evening','Park · Picnic tables',['jules','mako','theo']),L('jules','GRAND FINAL. Say it with me.'),N('Even Theo says it. Quietly, but he says it.')]),
+  D('park','Celebrate with the team: hot chips at the park',{energy:-2,jules:1,mako:2,theo:1},[AT('park','Saturday','Evening','Park · Picnic tables',['jules','mako','theo']),L('jules','GRAND FINAL. Say it with me.'),N('Even Theo says it. Quietly, but he says it.')]),
   D('home','Call Dee and tell her everything',{energy:-1,dee:2},[PH('Dee','Saturday','Evening'),L('dee',`I watched the interview. you sounded like a real pro. a nice one.`)]),
   REST('home','Quiet night in',[HOME('Saturday','Evening'),N('You fall asleep before 10 with the stream replay still running.')])
  ]),
@@ -1088,7 +1205,8 @@ const CHAPTERS=[
    :g>=.5?[N('The team nods. Not everyone looks settled, but they know the plan.')]
    :[L('jules','So... what are we actually doing?'),N('The brief made people more nervous, not less.'),FX({jules:-1})];}),
  PH('Ryder','Saturday','Day','arena','Arena · Backstage'),
- L('ryder',`Big day! Quick one. My offer ends tonight. I need an answer before your match.`),
+ DYN(s=>[L('ryder',s.f.ryder?`Big day! You said you were interested. My offer ends tonight, and I need an answer before your match.`:`Big day! Quick one. My offer ends tonight. I need an answer before your match.`)]),
+ DYN(s=>s.f.toldCoach||s.f.toldAdult?[N('Coach Raman already knows about Ryder. That makes this message a lot easier to put down.')]:[]),
  C(8,'Ryder wants an answer now',[
   O(`I'm not thinking about that right now. After the match.`,{purpose:1,calm:1},[N('You put your phone in your bag.')]),
   O(`Okay, quick. What's the offer?`,{purpose:-1,calm:-1},[L('ryder','Three times what the Comets will ever pay. Your own stream deal. Practice when you want, no coach telling you to sleep...'),N('By the time you finish reading, the match is about to start and your head is somewhere else.')])
@@ -1140,30 +1258,38 @@ const CHAPTERS=[
  ]),
  AT('academy','Saturday','Night','Comets base · That night',['coach','mako','jules','theo']),
  DYN(s=>{const out=[];
-  const strong=s.v.coach>=OFFER_COACH&&(s.v.clear+s.v.listen+s.v.story+s.v.calm)>=OFFER_SKILLS;
+  const ready=s.v.coach>=OFFER_COACH&&(s.v.clear+s.v.listen+s.v.story+s.v.calm)>=OFFER_SKILLS;
+  const close=['mako','jules','theo'].filter(k=>s.v[k]>=CLOSE_AT).length;
+  const strong=ready&&close>=OFFER_CLOSE;
   s.f.offer=strong?'main':'academy';
+  if(ready&&!strong)s.f.offerWhy='Coach Raman said your calls were ready, but the team did not know you well enough yet. That part happens away from the match.';
   out.push(L('coach',s.f.won?`Champions. I'm still a bit stunned.`:`Second in the state, in your first season. I'm proud of all of you.`));
   if(strong)out.push(L('coach',`{name}, I want you on the main roster next season. As a shot caller. Not because of your aim. Because people listen when you talk, and you listen back.`));
+  else if(ready)out.push(L('coach',`{name}, your calls are some of the best I've coached. But a shot caller needs the team behind them, and that comes from time together. Deputy caller next season, next to Mako. Let's build it.`));
   else out.push(L('coach',`{name}, I'd like you back in the academy next season, as deputy caller next to Mako. You've grown a lot. Let's keep building it.`));
   return out;}),
  N('Your phone buzzes. Ryder.'),
  L('ryder','So? Blaze Syndicate. Last chance. Big money, no rules.'),
  C(0,'Choose your next step',[
   O(s=>s.f.offer==='main'?'Take the main roster spot with the Comets.':'Stay with the Comets and keep building.',{},[FLAG('stay'),L('ryder','Your call. Good luck.')]),
-  O('Tell Coach Raman about the offer, honestly, then decide with the team.',{respect:1,coach:2},[FLAG('stay'),FLAG('honest'),L('coach','Thanks for telling me. That tells me more about you than any match did.'),L('coach',`The door's open, here, whatever you pick. But I'd love you to stay.`),YOU(`I'm staying.`)],'coach'),
+  O('Tell Coach Raman about the offer, honestly, then decide with the team.',{respect:1,coach:2},[FLAG('stay'),FLAG('honest'),DYN(s=>[L('coach',s.f.toldCoach||s.f.toldAdult?'You told us about this weeks ago, when he asked you not to. That tells me more about you than any match did.':'Thanks for telling me. That tells me more about you than any match did.')]),L('coach',`The door's open, here, whatever you pick. But I'd love you to stay.`),YOU(`I'm staying.`)],'coach'),
   O('Sign with Blaze Syndicate.',{},[FLAG('blaze'),L('ryder','Knew it. Welcome to the big time.')])
  ]),
  {t:'final'}
 ]}
 ];
-const OFFER_COACH=7,OFFER_SKILLS=14;
+/* main roster offer: Coach Raman, total skill points, and teammates (Mako, Jules, Theo) who are Close or better */
+const OFFER_COACH=9,OFFER_SKILLS=22,OFFER_CLOSE=2;
+/* typical saves for "Jump to a chapter": the state of a middling run at the start of each day (made by genpresets.js) */
+const PRESETS=[null,{"v":{"coach":3,"mako":2,"jules":1,"theo":1,"dee":6,"clear":1,"listen":0,"story":0,"calm":0,"positive":0,"purpose":3,"respect":0,"energy":3},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1},"g":{},"picks":{}},{"v":{"coach":6,"mako":6,"jules":4,"theo":6,"dee":5,"clear":4,"listen":0,"story":0,"calm":0,"positive":2,"purpose":4,"respect":2,"energy":3},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1,"theoClear":1,"ggGood":1},"g":{"sdv":0.8333333333333334},"picks":{}},{"v":{"coach":6,"mako":6,"jules":4,"theo":6,"dee":7,"clear":4,"listen":2,"story":0,"calm":0,"positive":2,"purpose":7,"respect":2,"energy":3},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1,"theoClear":1,"ggGood":1,"lift":1,"kaiOk":1,"posterWent":1,"poster":1},"g":{"sdv":0.8333333333333334},"picks":{}},{"v":{"coach":7,"mako":7,"jules":6,"theo":11,"dee":6,"clear":4,"listen":6,"story":0,"calm":2,"positive":3,"purpose":9,"respect":4,"energy":4},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1,"theoClear":1,"ggGood":1,"lift":1,"kaiOk":1,"posterWent":1,"poster":1,"pushedB":1,"toldAdult":1},"g":{"sdv":0.8333333333333334,"briefk":0.8333333333333334,"barrier":0.8333333333333334,"mirror":1},"picks":{}},{"v":{"coach":9,"mako":8,"jules":7,"theo":15,"dee":8,"clear":5,"listen":7,"story":3,"calm":2,"positive":4,"purpose":11,"respect":4,"energy":6},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1,"theoClear":1,"ggGood":1,"lift":1,"kaiOk":1,"posterWent":1,"poster":1,"pushedB":1,"toldAdult":1,"semiCall":1,"blameFix":1,"promised":1},"g":{"sdv":0.8333333333333334,"briefk":0.8333333333333334,"barrier":0.8333333333333334,"mirror":1,"story":0.875},"picks":{"story":["Our team, the Comets, in our first semi-final.","We wanted to win, the same as every team wants to win.","They stacked middle, we went early, and Theo's call got lost in the noise.","Now we mirror every call before we move."]}},{"v":{"coach":11,"mako":8,"jules":7,"theo":16,"dee":12,"clear":5,"listen":9,"story":4,"calm":2,"positive":5,"purpose":12,"respect":6,"energy":4},"f":{"walkDee":1,"settings":1,"sprDone":1,"rested":1,"theoClear":1,"ggGood":1,"lift":1,"kaiOk":1,"posterWent":1,"poster":1,"pushedB":1,"toldAdult":1,"semiCall":1,"blameFix":1,"promised":1,"keptPromise":1,"respectOpp":1},"g":{"sdv":0.8333333333333334,"briefk":0.8333333333333334,"barrier":0.8333333333333334,"mirror":1,"story":0.875,"mirrorr":1},"picks":{"story":["Our team, the Comets, in our first semi-final.","We wanted to win, the same as every team wants to win.","They stacked middle, we went early, and Theo's call got lost in the noise.","Now we mirror every call before we move."]}}];
 
 /* ===== Scouted v2 engine ===== */
 const fresh=()=>({name:'Nova',ch:0,v:{coach:REL_START.coach,mako:REL_START.mako,jules:REL_START.jules,theo:REL_START.theo,dee:REL_START.dee,clear:0,listen:0,story:0,calm:0,positive:0,purpose:0,respect:0,energy:ENERGY_START},f:{},g:{},log:[],picks:{}});
 let S=fresh();
-let SET={timer:'normal',text:'normal'};
+let SET={timer:'normal',text:'normal',voice:'off'};
 const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const savedSet=store.get('scouted3.settings');if(savedSet)SET=Object.assign(SET,savedSet);
+const SKILL_MAX=16,VALUE_MAX=14;
 const tmul=()=>SET.timer==='relaxed'?2:1;
 const emul=()=>{const e=S.v.energy;return e>=5?1.2:e<=1?0.75:1;};
 const timersOn=()=>SET.timer!=='off';
@@ -1246,7 +1372,8 @@ function addLine(n,quiet){
   const mode=SCN.mode;
   if(mode==='phone'){
     const box=$('phMsgs');
-    const add=()=>{const b=el('div','bub '+(n.s==='sys'?'note'+(n.tut?' tut':''):n.s==='you'?'out'+(silent?' silent':''):'in'),x);box.append(b);box.scrollTop=box.scrollHeight;};
+    const group=CAST[n.s]&&CAST[n.s].n!==SCN.contact&&!(n.s==='ryder');
+    const add=()=>{const b=el('div','bub '+(n.s==='sys'?'note'+(n.tut?' tut':''):n.s==='you'?'out'+(silent?' silent':''):'in'));if(group){const w=el('b','who',CAST[n.s].n);w.style.color=CAST[n.s].c;b.append(w);}b.append(document.createTextNode(x));box.append(b);box.scrollTop=box.scrollHeight;};
     if(n.s!=='sys'&&n.s!=='you'&&!reduced){const d=el('div','typing-dots');d.append(el('i'),el('i'),el('i'));box.append(d);box.scrollTop=box.scrollHeight;
       typing={fin:()=>{if(!typing)return;clearTimeout(typing.id);d.remove();typing=null;add();},id:setTimeout(()=>typing&&typing.fin(),520)};}
     else add();
@@ -1260,9 +1387,21 @@ function addLine(n,quiet){
   setTalk(n.s);showDlg(n.s,x);
 }
 
+/* ---------- pausable clock: every countdown stops while a drawer or overlay is open, or the tab is hidden ---------- */
+const WAITS=new Set();let lastTick=performance.now(),timerW=null;
+const paused=()=>!$('drawer').hidden||!$('ov').hidden||document.hidden;
+function later(ms,fn,onTick){const w={left:ms,total:ms,fn,onTick};WAITS.add(w);return w;}
+function stopTimer(){if(timerW){WAITS.delete(timerW);timerW=null;}}
+function clockLoop(now){const dt=Math.min(250,Math.max(0,now-lastTick));lastTick=now;
+  if(!paused())[...WAITS].forEach(w=>{if(!WAITS.has(w))return;w.left-=dt;if(w.onTick)w.onTick(Math.max(0,w.left/w.total));if(w.left<=0){WAITS.delete(w);w.fn();}});
+  requestAnimationFrame(clockLoop);}
+requestAnimationFrame(clockLoop);
+function hush(){try{window.speechSynthesis&&speechSynthesis.cancel();}catch(e){}}
+function speak(t){if(SET.voice!=='on')return;try{if(!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.rate=1;speechSynthesis.speak(u);}catch(e){}}
+
 /* ---------- runner ---------- */
-let Q=[],keyHandler=null,timerId=null,tapHandler=null;
-function clearPanel(){panel.replaceChildren();keyHandler=null;tapHandler=null;stage.classList.remove('tap');if(timerId){cancelAnimationFrame(timerId);timerId=null;}}
+let Q=[],keyHandler=null,tapHandler=null;
+function clearPanel(){panel.replaceChildren();keyHandler=null;tapHandler=null;stage.classList.remove('tap');WAITS.clear();timerW=null;hush();}
 function step(){
   clearPanel();
   if(!Q.length)return;
@@ -1278,7 +1417,7 @@ function step(){
   if(n.t==='do'){n.f(S);return step();}
   if(n.t==='game')return (n.kind==='mirror'?gameMirror:gameBuild)(n);
   if(n.t==='end')return showRecap();
-  if(n.t==='final')return showFinal();
+  if(n.t==='final')return showRecap();
 }
 function advance(){if(typing){typing.fin();return;}step();}
 function waitTap(){
@@ -1288,14 +1427,15 @@ function waitTap(){
 }
 stage.addEventListener('click',e=>{if(e.target.closest('.pin'))return;if(tapHandler)tapHandler();});
 function applyFx(fx,announce){
-  const before={};RELS.forEach(k=>before[k]=perk(S,k));const eb=energyState(S.v.energy);
+  const before={};RELS.forEach(k=>before[k]=tier(S,k));const eb=energyState(S.v.energy);
   for(const k in fx){S.v[k]=(S.v[k]||0)+fx[k];}
   if((fx.dee||0)>0)S.f.deeToday=1;
   S.v.energy=Math.max(0,Math.min(ENERGY_MAX,S.v.energy));
-  RELS.forEach(k=>{const a=perk(S,k);if(a!==before[k]){
-    if(a===1)toast(k,'Perk unlocked. '+PERKS[k].up);
+  RELS.forEach(k=>{const a=tier(S,k),b=before[k];if(a!==b){
+    if(a===2)toast(k,'Trusted. '+PERKS[k].up);
+    else if(a===1)toast(k,b===2?'Back to Close. '+PERKS[k].mid:'Close. '+PERKS[k].mid);
     else if(a===-1)toast(k,'Strained. '+PERKS[k].dn);
-    else toast(k,before[k]===1?CAST[k].n+' perk lost.':'Things with '+CAST[k].n+' are back to okay.');}});
+    else toast(k,b>0?CAST[k].n+' perk lost.':'Things with '+CAST[k].n+' are back to okay.');}});
   const ea=energyState(S.v.energy);if(ea!==eb)toast(null,'Energy: '+ea+'. '+(ea==='Fresh'?'Timers run 20% slower.':ea==='Steady'?'Timers are normal.':'Timers run 25% faster.'));
   updEnergy();
   if(!announce)return;
@@ -1306,18 +1446,17 @@ function flashFx(fx,note){
   document.querySelectorAll('.fxflash').forEach(x=>x.remove());
   const f=el('div','fxflash');if(note)f.append(el('div','fxnote',note));
   const row=el('div','chips');e.sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>row.append(el('span','chip big '+(v>0?'up':'dn'),(v>0?'+':'')+v+' '+LABEL(k))));f.append(row);
-  stage.append(f);setTimeout(()=>f.classList.add('out'),2600);setTimeout(()=>f.remove(),3100);
+  $('toasts').prepend(f);setTimeout(()=>f.classList.add('out'),2600);setTimeout(()=>f.remove(),3100);
 }
 function startTimer(sec,onDone){
   const bar=el('div','timer');const i=el('i');bar.append(i);
-  const total=sec*tmul()*emul()*1000;const t0=performance.now();
-  const tick=now=>{const f=Math.max(0,1-(now-t0)/total);i.style.transform='scaleX('+f+')';bar.classList.toggle('low',f<.3);
-    if(f<=0){timerId=null;onDone();return;}timerId=requestAnimationFrame(tick);};
-  timerId=requestAnimationFrame(tick);return bar;
+  stopTimer();
+  timerW=later(sec*tmul()*emul()*1000,()=>{timerW=null;onDone();},f=>{i.style.transform='scaleX('+f+')';bar.classList.toggle('low',f<.3);});
+  return bar;
 }
 function choose(n,o,silent){
   const say=o.say?nm(o.say):nm(o.x);
-  applyFx(o.fx);flashFx(o.fx);
+  applyFx(o.fx);flashFx(o.fx);if(o.tag)S.f[o.tag]=1;
   S.log.push({ch:S.ch,q:nm(n.q),a:say,fx:o.fx,v:o.v});
   if(o.mem)toast(o.mem,CAST[o.mem].n+' will remember that.');
   Q.unshift(...(o.then||[]));
@@ -1325,9 +1464,11 @@ function choose(n,o,silent){
 }
 function showChoice(n){
   if(typing)typing.fin();
-  const timed=n.time>0&&timersOn();
+  const timed=n.time>0&&timersOn();const opts=n.fixed?n.o:shuffle(n.o);
+  let secs=n.time>0?Math.max(6,Math.round(2+.35*opts.reduce((a,o)=>a+wcount(nm(o.x)),0))):0;
+  let pep=false;if(timed&&tier(S,'dee')>=1&&!S.f.deePep){S.f.deePep=1;secs+=4;pep=true;}
   const hd=el('div','gm-head');hd.append(el('div','q',nm(n.q)));
-  if(n.time>0)hd.append(el('span','scoretxt',timed?'Timed':'Timer off'));
+  if(n.time>0)hd.append(el('span','scoretxt',timed?(pep?'Timed · Dee has your back, 4 extra seconds':'Timed'):'Timer off'));
   panel.append(hd);
   const to=n.to||O('(Say nothing)',{});
   let done=false;
@@ -1336,11 +1477,11 @@ function showChoice(n){
     addLine({s:'you',x:say});
     waitTap();
   };
-  if(timed)panel.append(startTimer(n.time,()=>pick(to,true)));
+  if(timed)panel.append(startTimer(secs,()=>pick(to,true)));
   const grid=el('div','opts');
-  n.o.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,nm(o.x)));b.onclick=()=>pick(o);grid.append(b);});
+  opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';b.append(el('kbd',null,String(i+1)),el('span',null,nm(o.x)));b.onclick=()=>pick(o);grid.append(b);});
   panel.append(grid);
-  keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=n.o.length){e.preventDefault();pick(n.o[k-1]);}};
+  keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();pick(opts[k-1]);}};
 }
 function showMap(n){
   setTime(n.day,n.time);$('hudVenue').textContent='Town map';
@@ -1366,7 +1507,8 @@ function showMap(n){
 }
 document.addEventListener('keydown',e=>{if(!$('ov').hidden||!$('drawer').hidden)return;if(e.target.tagName==='INPUT')return;keyHandler&&keyHandler(e);});
 function toast(k,msg){const t=el('div','toast');t.style.borderLeftColor=CAST[k]?CAST[k].c:'var(--violet)';if(CAST[k])t.append(avatarEl(k,'av'));t.append(el('span',null,msg));
-  const tb=$('toasts');while(tb.children.length>=3)tb.firstChild.remove();tb.append(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),450);},3200);}
+  const tb=$('toasts');let ts=tb.querySelectorAll('.toast');while(ts.length>=3){ts[0].remove();ts=tb.querySelectorAll('.toast');}tb.append(t);setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),450);},3200);}
+const wcount=t=>String(t).trim().split(/\s+/).length;
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 
 /* ---------- builder minigame ---------- */
@@ -1377,26 +1519,31 @@ function gameBuild(n){
   panel.append(hd,el('div','gm-sit',d.sit));
   const slotBar=el('div','slots');d.slots.forEach(s=>slotBar.append(el('span','slot',s.k+' · '+s.n)));panel.append(slotBar);
   const area=el('div');area.style.display='grid';area.style.gap='10px';panel.append(area);
-  const jp=perk(S,'jules'),cp=perk(S,'coach'),mp=TEAMCALL.includes(d.id)?perk(S,'mako'):0;
-  if(d.time&&timersOn()){const tt=Math.max(10,d.time+6*jp);tl.textContent='Timed'+(jp>0?' · Jules bought you 6s':jp<0?' · Jules is talking over you':'');panel.insertBefore(startTimer(tt,()=>finish(true)),slotBar);}else tl.textContent='Take your time';
+  const jt=tier(S,'jules'),ct=tier(S,'coach'),cp=perk(S,'coach'),mt=TEAMCALL.includes(d.id)?tier(S,'mako'):0;
+  const js=jt===2?6:jt===1?3:jt<0?-6:0,mb=mt===2?.1:mt===1?.05:mt<0?-.1:0;
+  if(d.time&&timersOn()){const tt=Math.max(10,d.time+js);tl.textContent='Timed'+(js>0?' · Jules bought you '+js+'s':js<0?' · Jules is talking over you':'');panel.insertBefore(startTimer(tt,()=>finish(true)),slotBar);}else tl.textContent='Take your time';
+  let crossed=null;
   const render=()=>{
     [...slotBar.children].forEach((c,i)=>c.className='slot'+(i<idx?' done':i===idx?' on':''));
     area.replaceChildren();const s=d.slots[idx];
     const lab=el('div','slot-label');lab.append(el('span','big',s.k),el('span','nm',s.n),el('span','hint',s.h));area.append(lab);
     const grid=el('div','opts');const opts=shuffle(s.o);
-    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';const sp=el('span',null,o.x);if(cp>0&&o.q===2&&idx===0&&!opts.slice(0,i).some(x=>x.q===2))sp.append(el('span','tip',"Coach's tip"));b.append(el('kbd',null,String(i+1)),sp);b.onclick=()=>pickOne(o);grid.append(b);});
+    if(ct===1&&idx===0&&!crossed)crossed=opts.find(o=>o.q===0)||null;
+    opts.forEach((o,i)=>{const b=el('button','opt');b.type='button';const sp=el('span',null,o.x);if(ct===2&&o.q===2&&idx===0&&!opts.slice(0,i).some(x=>x.q===2))sp.append(el('span','tip',"Coach's tip"));
+      if(idx===0&&o===crossed){b.classList.add('crossed');sp.append(el('span','tip no','Coach shakes her head'));}
+      b.append(el('kbd',null,String(i+1)),sp);b.onclick=()=>pickOne(o);grid.append(b);});
     area.append(grid);
     keyHandler=e=>{const k=parseInt(e.key,10);if(k>=1&&k<=opts.length){e.preventDefault();pickOne(opts[k-1]);}};
   };
   const pickOne=o=>{if(finished)return;picks.push(o);idx++;if(idx>=d.slots.length)finish(false);else render();};
   const finish=timedOut=>{
-    if(finished)return;finished=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+    if(finished)return;finished=true;stopTimer();
     while(picks.length<d.slots.length)picks.push({x:'(Out of time)',q:0,w:'The clock ran out before you got here.',out:1});
-    const pts=picks.reduce((a,p)=>a+p.q,0),max=d.slots.length*2;const tiredPen=(S.v.energy<=1&&pts>0)?.1:0;const frac=Math.max(0,Math.min(1,pts/max+(pts>0?.1*mp:0)-tiredPen));
+    const pts=picks.reduce((a,p)=>a+p.q,0),max=d.slots.length*2;const tiredPen=(S.v.energy<=1&&pts>0)?.1:0;const frac=Math.max(0,Math.min(1,pts/max+(pts>0?mb:0)-tiredPen));
     S.g[d.id]=frac;S.picks[d.id]=picks.filter(p=>!p.out).map(p=>p.x);
     let gain=frac>=.85?3:frac>=.6?2:frac>=.35?1:0;if(d.practice)gain=Math.min(gain,2);if(cp<0&&gain>0)gain--;S.v[d.skill]+=gain;
     S.log.push({ch:S.ch,q:d.title,a:'Scored '+pts+' of '+max,fx:gain?{[d.skill]:gain}:{}});
-    const said=S.picks[d.id].join(' ');
+    const said=S.picks[d.id].filter(x=>!/^\(.*\)$/.test(x)).join(' ');
     if(n.say&&said)addLine({s:'you',x:said});
     clearPanel();
     const h=el('div','gm-head');h.append(el('div','gm-title',d.title+(timedOut?' · time ran out':'')));
@@ -1405,7 +1552,7 @@ function gameBuild(n){
     picks.forEach((p,i)=>{const r=el('div','fb-row');r.append(el('span','k',d.slots[i].k));const c=el('div');
       const a=el('div');a.append(el('span','dot q'+p.q),document.createTextNode(p.x));c.append(a,el('div','w',p.w||''));r.append(c);fb.append(r);});
     panel.append(fb);
-    if(mp&&pts>0)panel.append(el('div','gm-sit perkline '+(mp>0?'up':'dn'),mp>0?'Mako backed your call in voice chat. Team score +10%.':'Mako second-guessed your call. Team score -10%.'));
+    if(mb&&pts>0)panel.append(el('div','gm-sit perkline '+(mb>0?'up':'dn'),mb>0?'Mako backed your call in voice chat. Team score +'+Math.round(mb*100)+'%.':'Mako second-guessed your call. Team score -10%.'));
     if(tiredPen)panel.append(el('div','gm-sit perkline dn','You are running on empty. Score -10%.'));
     if(cp<0&&(frac>=.35))panel.append(el('div','gm-sit perkline dn','Coach is watching closely. 1 less skill point this time.'));
     if(gain)flashFx({[d.skill]:gain});
@@ -1423,21 +1570,23 @@ function gameMirror(n){
     clearPanel();const R=d.rounds[r];
     const hd=el('div','gm-head');hd.append(el('div','gm-title',d.title+' · call '+(r+1)+' of '+d.rounds.length));hd.append(el('span','scoretxt','Correct '+score));panel.append(hd);
     if(r===0)panel.append(el('div','gm-sit',d.sit));
-    const card=el('div','callcard');card.textContent='Theo: "'+R.call+'"';panel.append(card);
+    const card=el('div','callcard');card.textContent=CAST[d.who||'theo'].n+': "'+R.call+'"';panel.append(card);
     const status=el('div','scoretxt','Listen...');panel.append(status);
-    setTalk('theo');showDlg('theo',R.call);
-    const pingT=setTimeout(()=>{card.append(el('div','ping',R.ping));},1300);
-    const tp=perk(S,'theo');const showFor=(d.show+(tp>0?1.5:tp<0?-1:0))*1000*(SET.timer==='relaxed'?2:SET.timer==='off'?2.4:1)*emul();
-    if(r===0&&tp)panel.append(el('div','gm-sit perkline '+(tp>0?'up':'dn'),tp>0?'Theo trusts you, so he holds each call a little longer.':'Theo is wary of you. His calls disappear faster.'));
-    setTimeout(()=>{clearTimeout(pingT);if(typing)typing.fin();card.className='callcard gone';card.textContent='The call is gone. What did you hear?';dlg.hidden=true;setTalk(null);status.textContent='Pick your mirror and check';ask(R);},showFor);
+    setTalk(d.who||'theo');showDlg(d.who||'theo',R.call);
+    speak(R.call);
+    later(1300,()=>{card.append(el('div','ping',R.ping));});
+    const tp=tier(S,'theo');const showFor=(d.show+(tp===2?1.5:tp===1?.75:tp<0?-1:0))*1000*(SET.timer==='relaxed'?2:SET.timer==='off'?2.4:1)*emul();
+    if(r===0&&tp)panel.append(el('div','gm-sit perkline '+(tp>0?'up':'dn'),tp>0?'Theo '+(tp===2?'trusts you':'is getting used to you')+', so he holds each call a little longer.':'Theo is wary of you. His calls disappear faster.'));
+    later(showFor,()=>{hush();if(typing)typing.fin();card.className='callcard gone';card.textContent='The call is gone. What did you hear?';dlg.hidden=true;setTalk(null);status.textContent='Pick your mirror and check';ask(R);});
   };
   const ask=R=>{
     let done=false;const opts=shuffle(R.o);const grid=el('div','opts');
-    const answer=o=>{if(done)return;done=true;if(timerId){cancelAnimationFrame(timerId);timerId=null;}
+    const answer=o=>{if(done)return;done=true;stopTimer();
       [...grid.children].forEach((b,i)=>{b.disabled=true;const oo=opts[i];if(oo===o)b.classList.add('q'+o.q);else if(oo.q===2)b.classList.add('q2');else b.classList.add('dim');});
       addLine({s:'you',x:o?o.x:'(You missed it)'},true);
-      if(o&&o.q===2){score++;addLine({s:'theo',x:'Yes. Exactly.'});}
-      else{addLine({s:'theo',x:'No. I said: "'+R.call+'"'});if(o&&o.w)panel.append(el('div','gm-sit',o.w));}
+      const who=d.who||'theo';
+      if(o&&o.q===2){score++;addLine({s:who,x:'Yes. Exactly.'});}
+      else{addLine({s:who,x:'No. I said: "'+R.call+'"'});if(o&&o.w)panel.append(el('div','gm-sit',o.w));}
       const b=el('button','cont',r<d.rounds.length-1?'Next call':'Finish drill');b.type='button';
       b.onclick=()=>{if(typing)typing.fin();r++;if(r<d.rounds.length)runRound();else end();};panel.append(b);
       keyHandler=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();b.click();}};
@@ -1465,9 +1614,10 @@ function setHud(chap){
 function startChapter(i){
   S.ch=i;const chap=CHAPTERS[i];
   store.set('scouted3.save',{S,at:i});
-  setHud(chap);$('ov').hidden=true;
+  setHud(chap);$('ov').hidden=true;$('drawer').hidden=true;
   S.f.deeToday=0;
-  if(i>0){const add=ENERGY_SLEEP+(perk(S,'dee')>0?1:0);S.v.energy=Math.min(ENERGY_MAX,S.v.energy+add);}
+  if(i>0){const add=ENERGY_SLEEP+(tier(S,'dee')===2?1:0);S.f.deePep=0;S.v.energy=Math.min(ENERGY_MAX,S.v.energy+add);}
+  S.f.deeYesterday=0;
   updEnergy();
   logPush({sc:chap.ch+' · '+chap.name});
   Q=chap.nodes.slice();step();
@@ -1475,45 +1625,68 @@ function startChapter(i){
 function chipsFor(fx){const w=el('div','chips');Object.entries(fx||{}).forEach(([k,v])=>{if(!v)return;w.append(el('span','chip '+(v>0?'up':'dn'),(v>0?'+':'')+v+' '+LABEL(k)));});return w;}
 function cardEl(c){const d=el('div','tc '+c.c);d.append(el('div','lbl',c.lbl),el('h3',null,c.h),el('p',null,c.p));
   if(c.steps){const s=el('div','steps');c.steps.forEach(([k,h])=>{const r=el('div');r.append(el('b',null,k));const sp=el('span');sp.innerHTML=h;r.append(sp);s.append(r);});d.append(s);}return d;}
+function resultsText(final){
+  const L=[];L.push('Scouted · '+S.name+(final?' · Season summary':' · '+CHAPTERS[S.ch].ch+': '+CHAPTERS[S.ch].name));
+  let cur=-1;
+  S.log.filter(x=>final||x.ch===S.ch).forEach(x=>{if(final&&x.ch!==cur){cur=x.ch;L.push('');L.push(CHAPTERS[cur].ch+': '+CHAPTERS[cur].name);}
+    const fx=Object.entries(x.fx||{}).filter(([k,v])=>v).map(([k,v])=>(v>0?'+':'')+v+' '+LABEL(k)).join(', ');
+    L.push('- '+x.q+': '+x.a+(fx?' ['+fx+']':''));});
+  L.push('');L.push('Comms skills: '+Object.entries(SKILLS).map(([k,l])=>l+' '+S.v[k]).join(', '));
+  L.push('Valor values: '+Object.entries(VALUES).map(([k,l])=>l+' '+S.v[k]).join(', '));
+  L.push('Relationships: '+RELS.map(k=>CAST[k].n+' '+S.v[k]+' ('+relState(S.v[k])+')').join(', '));
+  if(final&&S.f.endTitle)L.push('Ending: '+S.f.endTitle);
+  return L.join('\n');
+}
+function shareRow(final){const r=el('div','row share');
+  const c=el('button','btn ghost','Copy my results');c.type='button';
+  c.onclick=()=>{const t=resultsText(final);const done=()=>{c.textContent='Copied';setTimeout(()=>{c.textContent='Copy my results';},1800);};
+    const fb=()=>{const ta=el('textarea');ta.value=t;ta.style.position='fixed';ta.style.opacity='0';document.body.append(ta);ta.select();try{document.execCommand('copy');done();}catch(e){}ta.remove();};
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done,fb);else fb();};
+  const p=el('button','btn ghost','Print');p.type='button';p.onclick=()=>window.print();r.append(c,p);return r;}
+function clearPops(){document.querySelectorAll('.fxflash,.toast').forEach(x=>x.remove());}
 function showRecap(){
   clearPanel();
   if(!S.f.deeToday&&S.ch>0&&!S.f.blaze){applyFx({dee:-1});S.log.push({ch:S.ch,q:'End of the day',a:"You didn't make time for Dee today.",fx:{dee:-1}});}
+  S.f.deeYesterday=S.f.deeToday?1:0;
+  clearPops();
   const chap=CHAPTERS[S.ch],info=CARDS[chap.key];
   const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in');
   w.append(el('div','brand',info.tag+' · complete'));
   const h=el('h1','logo',info.title);h.style.fontSize='clamp(40px,9vw,76px)';w.append(h);
   w.append(el('h2','sec-h','What you learned'));
   const tcs=el('div','toolcards');info.cards.forEach(c=>tcs.append(cardEl(c)));w.append(tcs);
+  const mine=(info.links||[]).filter(([f])=>{try{return f(S);}catch(e){return false;}}).slice(0,3);
+  if(mine.length){w.append(el('h2','sec-h','How you used it today'));const ul=el('div','picks');mine.forEach(([f,t,good])=>{const p=el('div','pick link '+(good?'up':'dn'));p.append(el('div','a',nm(t)));ul.append(p);});w.append(ul);}
   w.append(el('h2','sec-h','Your choices'));
   const pk=el('div','picks');
   S.log.filter(x=>x.ch===S.ch).forEach(x=>{const p=el('div','pick');p.append(el('div','scoretxt',(x.v?(PINS[x.v]?PINS[x.v].n:VENUES[x.v])+' · ':'')+x.q),el('div','a',x.a),chipsFor(x.fx));pk.append(p);});
   w.append(pk);
   const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'),el('p',null,info.reflect));w.append(rf);
   const row=el('div','row');const next=S.ch+1<CHAPTERS.length;
-  const b=el('button','btn',next?'Next: '+CHAPTERS[S.ch+1].ch:'Finish');b.type='button';b.onclick=()=>{if(next)startChapter(S.ch+1);};
+  const b=el('button','btn',next?'Next: '+CHAPTERS[S.ch+1].ch:'See how your season ends');b.type='button';b.onclick=()=>{if(next)startChapter(S.ch+1);else showFinal();};
   const t=el('button','btn ghost','See team');t.type='button';t.onclick=openTeam;
-  row.append(b,t);w.append(row);
+  row.append(b,t);w.append(row,shareRow(false));
   ov.append(w);ov.hidden=false;ov.scrollTop=0;b.focus({preventScroll:true});
   store.set('scouted3.save',{S,at:S.ch+1});
 }
-function relState(v){return v>=PERK_AT?'Trusted':v>=10?'Close':v>=5?'Friendly':v>STRAIN_AT?'Neutral':'Strained';}
+function relState(v){return v>=PERK_AT?'Trusted':v>=CLOSE_AT?'Close':v>=4?'Friendly':v>STRAIN_AT?'Neutral':'Strained';}
 function relEl(k){const v=S.v[k];const r=el('div','rel');r.append(avatarEl(k,'av'));const b=el('div');b.append(el('div','nm',CAST[k].n),el('div','st',CAST[k].r+' · '+relState(v)));
-  const p=el('div','pips');for(let i=0;i<PERK_AT;i++){const q=el('i');if(v>0&&i<v)q.className='on';if(v<0&&i<-v)q.className='neg';if(i===PERK_AT-1)q.classList.add('mark');p.append(q);}b.append(p);
-  const pk=perk(S,k);b.append(el('div','perk '+(pk>0?'up':pk<0?'dn':''),pk>0?PERKS[k].up:pk<0?PERKS[k].dn:'Reach '+PERK_AT+' to unlock: '+PERKS[k].up.split(':')[0]+'. Drop below 0 and it turns into a strain.'));r.append(b);return r;}
+  const p=el('div','pips');for(let i=0;i<PERK_AT;i++){const q=el('i');if(v>0&&i<v)q.className='on';if(v<0&&i<-v)q.className='neg';if(i===PERK_AT-1||i===CLOSE_AT-1)q.classList.add('mark');p.append(q);}b.append(p);
+  const pk=tier(S,k);b.append(el('div','perk '+(pk>0?'up':pk<0?'dn':''),pk===2?PERKS[k].up:pk===1?PERKS[k].mid+' Reach '+PERK_AT+' for the full perk.':pk<0?PERKS[k].dn:'Reach '+CLOSE_AT+' for a small perk and '+PERK_AT+' for the full one: '+PERKS[k].up.split(':')[0]+'. Drop below 0 and it turns into a strain.'));r.append(b);return r;}
 function barEl(label,v,max,color){const b=el('div','bar');const t=el('div','top');t.append(el('span',null,label),el('span',null,Math.max(0,v)+(label.startsWith('Energy')?' / '+max:' pts')));
   const tr=el('div','tr');const i=el('i');i.style.width=Math.min(100,Math.max(0,v)/max*100)+'%';i.style.background=color;tr.append(i);b.append(t,tr);return b;}
 function drawerHead(title){const d=$('drawer');d.replaceChildren();const h=el('div','gm-head');h.append(el('div','gm-title',title));const x=el('button','hbtn','Close');x.type='button';x.onclick=()=>{d.hidden=true;};h.append(x);d.append(h);d.hidden=false;x.focus();return d;}
 function openTeam(){
   const d=drawerHead('Your team');
   d.append(barEl('Energy · '+energyState(S.v.energy),S.v.energy,ENERGY_MAX,S.v.energy<=1?'var(--coral,#ff8a7a)':'linear-gradient(90deg,#3dd6b0,var(--blue))'));
-  d.append(el('div','scoretxt','Every side activity costs energy. You get '+ENERGY_SLEEP+' back each night when you sleep. Fresh (5 or more) slows every timer. Running on empty (1 or less) speeds them up and takes 10% off your call builder scores.'));
+  d.append(el('div','scoretxt','Every side activity costs energy. Resting gives 1 back, and you get '+ENERGY_SLEEP+' more each night when you sleep. Fresh (5 or more) slows every timer. Running on empty (1 or less) speeds them up and takes 10% off your call builder scores.'));
   d.append(el('h2','sec-h','Relationships'));
-  d.append(el('div','scoretxt','At '+PERK_AT+' or more someone becomes Trusted and gives you a perk. Below 0 they are Strained and it costs you. Dee drops 1 on any day you do not make time for her.'));
+  d.append(el('div','scoretxt','At '+CLOSE_AT+' someone is Close and gives you a small perk. At '+PERK_AT+' they are Trusted and the perk is stronger. Below 0 they are Strained and it costs you. Dee drops 1 on any day you do not make time for her.'));
   RELS.forEach(k=>d.append(relEl(k)));
   d.append(el('h2','sec-h','Comms skills'));
-  Object.entries(SKILLS).forEach(([k,l])=>d.append(barEl(l,S.v[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  Object.entries(SKILLS).forEach(([k,l])=>d.append(barEl(l,S.v[k],SKILL_MAX,'linear-gradient(90deg,var(--blue),var(--violet))')));
   d.append(el('h2','sec-h','Valor values'));
-  Object.entries(VALUES).forEach(([k,l])=>d.append(barEl(l,S.v[k],6,'var(--violet2)')));
+  Object.entries(VALUES).forEach(([k,l])=>d.append(barEl(l,S.v[k],VALUE_MAX,'var(--violet2)')));
 }
 function openLog(){
   const d=drawerHead('Conversation log');
@@ -1525,7 +1698,19 @@ function openLog(){
     r.append(el('span',null,e.x));d.append(r);});
   d.scrollTop=d.scrollHeight;
 }
-$('teamBtn').onclick=openTeam;$('logBtn').onclick=openLog;$('menuBtn').onclick=()=>showTitle();
+function mkSeg(label,key,opts){const st=el('div','row');st.append(el('span','scoretxt',label));const seg=el('div','seg');
+  opts.forEach(([k,l])=>{const b=el('button',SET[key]===k?'on':'',l);b.type='button';b.onclick=()=>{SET[key]=k;store.set('scouted3.settings',SET);[...seg.children].forEach(c=>c.className='');b.className='on';if(key==='voice'&&k==='on')speak('Voice on.');};seg.append(b);});st.append(seg);return st;}
+const SEGS=()=>[mkSeg('Timers','timer',[['normal','Normal'],['relaxed','Relaxed'],['off','Off']]),mkSeg('Text speed','text',[['normal','Normal'],['fast','Fast'],['instant','Instant']]),mkSeg("Theo's voice",'voice',[['off','Off'],['on','On']])];
+function openMenu(){
+  const d=drawerHead('Paused');
+  d.append(el('div','scoretxt','Timers stop while this is open. Changes apply from your next choice.'));
+  SEGS().forEach(x=>d.append(x));
+  d.append(el('div','scoretxt',"Theo's voice reads his calls aloud in the listening drills. Best with headphones."));
+  const row=el('div','row');const r=el('button','btn','Resume');r.type='button';r.onclick=()=>{d.hidden=true;};
+  const q=el('button','btn ghost','Quit to title');q.type='button';q.onclick=()=>{d.hidden=true;showTitle();};row.append(r,q);d.append(row);
+  d.append(el('div','scoretxt','If you quit, this day starts again from the morning when you continue.'));
+}
+$('teamBtn').onclick=openTeam;$('logBtn').onclick=openLog;$('menuBtn').onclick=openMenu;
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('drawer').hidden=true;});
 
 function showFinal(){
@@ -1540,9 +1725,9 @@ function showFinal(){
     lines=[S.f.won?'State champions, and next season you call for the Comets main roster.':'Second in the state, and next season you call for the Comets main roster.',
      'People follow you because you are calm, clear and sincere. Because you check, and you listen back.'];}
   else{title='The Teammate';
-    lines=['Another season in the academy, now as deputy caller next to Mako.',
+    lines=['Another season in the academy, now as deputy caller next to Mako.',...(S.f.offerWhy?[S.f.offerWhy]:[]),
      'You have the tools now: State, Describe, Verify. Listen, Mirror, Check. Someone, Want, Obstacle, Change. CALM. Next season is about using them every time, not just when you remember.'];}
-  if(S.f.honest)lines.push('Telling Coach Raman about the offer was the moment the club decided to build around you.');
+  if(S.f.honest||S.f.toldCoach)lines.push('Telling Coach Raman about the offer was the moment the club decided to build around you.');
   if(S.f.deeThere)lines.push('Dee keeps the sign from the grand final, handle still spelled wrong. It goes up on the wall at the Comets base.');
   else if(s.dee>=10)lines.push('Dee is in the crowd at your first match of next season, holding a sign with your handle spelled wrong. You keep it.');
   else if(s.dee<0)lines.push('You and Dee talk less these days. Maybe a message, this week, would be a good start.');
@@ -1550,6 +1735,7 @@ function showFinal(){
   else if(s.theo<0)lines.push('Theo moves to another academy at the end of the season. He never really said why.');
   if(s.jules>=9)lines.push('Jules still gets loud. But now, when you say "one voice", Jules is the first to go quiet.');
   if(valSum>=8)lines.push('At the season awards, the league gives you the Positive Player award, voted by the other teams.');
+  S.f.endTitle=title;clearPops();
   const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in ending');
   const hero=el('div','hero');const hb=el('div','bg');hb.innerHTML=BG[S.f.blaze?'home':S.f.won?'arena':'academy']();hero.append(hb);
   const hc=el('div','cast');(S.f.blaze?['ryder']:['jules','mako','theo','coach']).forEach(k=>{const sp=el('div','spr');sp.innerHTML=sprite(k);hc.append(sp);});hero.append(hc);w.append(hero);
@@ -1557,20 +1743,21 @@ function showFinal(){
   const ep=el('div','ep');lines.forEach(l=>ep.append(el('p',null,nm(l))));w.append(ep);
   w.append(el('h2','sec-h','Your people'));const rg=el('div','relgrid');RELS.forEach(k=>rg.append(relEl(k)));w.append(rg);
   w.append(el('h2','sec-h','Your comms profile'));
-  const bars=el('div','bars');Object.entries(SKILLS).forEach(([k,l])=>bars.append(barEl(l,s[k],8,'linear-gradient(90deg,var(--blue),var(--violet))')));
-  Object.entries(VALUES).forEach(([k,l])=>bars.append(barEl(l,s[k],6,'var(--violet2)')));w.append(bars);
+  const bars=el('div','bars');Object.entries(SKILLS).forEach(([k,l])=>bars.append(barEl(l,s[k],SKILL_MAX,'linear-gradient(90deg,var(--blue),var(--violet))')));
+  Object.entries(VALUES).forEach(([k,l])=>bars.append(barEl(l,s[k],VALUE_MAX,'var(--violet2)')));w.append(bars);
   const top=Object.entries(SKILLS).sort((a,b)=>s[b[0]]-s[a[0]]);
   const rf=el('div','reflect');rf.append(el('div','brand','Take it to your workbook'));
   rf.append(el('p',null,'Your strongest skill this run was '+top[0][1]+'. The one to work on is '+top[3][1]+'. Where could you practise it this week, in a game or in real life?'));w.append(rf);
   const row=el('div','row');const a=el('button','btn','Play again');a.type='button';a.onclick=()=>{store.set('scouted3.save',null);showTitle();};
-  const b=el('button','btn ghost','Pick a chapter');b.type='button';b.onclick=()=>showTitle();row.append(a,b);w.append(row);
+  const b=el('button','btn ghost','Pick a chapter');b.type='button';b.onclick=()=>showTitle();row.append(a,b);w.append(row,shareRow(true));
   ov.append(w);ov.hidden=false;ov.scrollTop=0;
   store.set('scouted3.save',null);
 }
 
 /* ---------- title / notes ---------- */
+function presetFor(i){const s=fresh();const p=(typeof PRESETS!=='undefined'&&PRESETS[i])||null;if(p){Object.assign(s.v,p.v);s.f=Object.assign({},p.f);s.g=Object.assign({},p.g);s.picks=JSON.parse(JSON.stringify(p.picks||{}));}return s;}
 function showTitle(){
-  clearPanel();
+  clearPanel();$('drawer').hidden=true;
   const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in');
   const hero=el('div','hero');const hb=el('div','bg');hb.innerHTML=BG.academy();hero.append(hb);const tn=el('div','tint Evening');hero.append(tn);
   const hc=el('div','cast');['jules','mako','theo','dee','coach'].forEach(k=>{const sp=el('div','spr');sp.innerHTML=sprite(k);hc.append(sp);});hero.append(hc);
@@ -1581,20 +1768,18 @@ function showTitle(){
   const getName=()=>(inp.value||'').trim().slice(0,16)||'Nova';
   const row=el('div','row');
   const go=el('button','btn','New career');go.type='button';go.onclick=()=>{S=fresh();S.name=getName();LOG.length=0;startChapter(0);};row.append(go);
-  if(sv&&sv.S&&sv.at<CHAPTERS.length){const c=el('button','btn ghost','Continue: '+CHAPTERS[sv.at].ch+' · '+CHAPTERS[sv.at].name);c.type='button';
-    c.onclick=()=>{S=Object.assign(fresh(),sv.S);S.v=Object.assign(fresh().v,sv.S.v||{});startChapter(sv.at);};row.append(c);}
+  if(sv&&sv.S&&sv.at<CHAPTERS.length){const c=el('button','btn ghost','Continue as '+(sv.S.name||'Nova')+': '+CHAPTERS[sv.at].ch+' · '+CHAPTERS[sv.at].name);c.type='button';
+    c.onclick=()=>{S=Object.assign(fresh(),sv.S);S.v=Object.assign(fresh().v,sv.S.v||{});LOG.length=0;startChapter(sv.at);};row.append(c);}
   const tnb=el('button','btn ghost','For coaches');tnb.type='button';tnb.onclick=showNotes;row.append(tnb);
   w.append(row);
-  const mkSeg=(label,key,opts)=>{const st=el('div','row');st.append(el('span','scoretxt',label));const seg=el('div','seg');
-    opts.forEach(([k,l])=>{const b=el('button',SET[key]===k?'on':'',l);b.type='button';b.onclick=()=>{SET[key]=k;store.set('scouted3.settings',SET);[...seg.children].forEach(c=>c.className='');b.className='on';};seg.append(b);});st.append(seg);return st;};
-  w.append(mkSeg('Timers',"timer",[['normal','Normal'],['relaxed','Relaxed'],['off','Off']]));
-  w.append(mkSeg('Text speed',"text",[['normal','Normal'],['fast','Fast'],['instant','Instant']]));
+  SEGS().forEach(x=>w.append(x));
   w.append(el('h2','sec-h','Jump to a chapter'));
+  w.append(el('div','scoretxt','Jumping in gives you a typical save from the days before, so earlier choices still pay off.'));
   const g=el('div','chgrid');
   CHAPTERS.forEach((c,i)=>{const b=el('button','chcard');b.type='button';
     const tagrow=el('div','row');tagrow.style.gap='6px';tagrow.append(el('span','n',c.ch));c.tags.forEach(([k,l])=>tagrow.append(el('span','tag '+k,l)));
     b.append(tagrow,el('span','ttl',c.name),el('span','s',c.blurb));
-    b.onclick=()=>{S=fresh();S.name=getName();LOG.length=0;startChapter(i);};g.append(b);});
+    b.onclick=()=>{S=presetFor(i);S.name=getName();LOG.length=0;startChapter(i);};g.append(b);});
   w.append(g);
   ov.append(w);ov.hidden=false;ov.scrollTop=0;
 }
@@ -1602,29 +1787,34 @@ function showNotes(){
   const ov=$('ov');ov.replaceChildren();const w=el('div','ov-in notes');
   w.append(el('div','brand','For coaches and teachers'));
   const h=el('h1','logo','Coach notes');h.style.fontSize='clamp(40px,9vw,72px)';w.append(h);
-  w.append(el('p','lede','Scouted is a short narrative choice game built on the Communication Skills Level 2 course. Each chapter is one full day in the player\'s life. The skills are spread across the days, so a tool from one module often comes back in another. A full run takes about 50 to 60 minutes, or play one day per lesson.'));
+  w.append(el('p','lede','Scouted is a short narrative choice game built on the Communication Skills Level 2 course. Each chapter is one full day in the player\'s life. The skills are spread across the days, so a tool from one module often comes back in another. A full run takes about 40 to 60 minutes, or play one day per lesson.'));
   const tw=el('div','tbl');const t=el('table');
   t.innerHTML='<thead><tr><th>Day</th><th>Weeks</th><th>Places</th><th>What students practise</th></tr></thead><tbody>'+
-   '<tr><td>1 Friday: The Message</td><td>Valor, 1</td><td>Home, phone, school, library</td><td>Game time is training time. Planning the night before a big day. Spending energy wisely.</td></tr>'+
+   '<tr><td>1 Friday: The Message</td><td>Valor, 1</td><td>Home, phone, school, library</td><td>Game time is training time: Set, Play, Review. Planning the night before a big day. Spending energy wisely.</td></tr>'+
    '<tr><td>2 Saturday: Clear Signal</td><td>1, 2</td><td>Academy, match, all chat, park</td><td>Sender, message, receiver. A State, Describe, Verify call (plus optional practice with Mako). Positive gaming online.</td></tr>'+
    '<tr><td>3 Wednesday: Heard, Not Listened</td><td>3, 2</td><td>Park, bus, school, library, phone</td><td>Listening barriers with Dee and Kai. Optional call practice and a mirror drill with Theo.</td></tr>'+
-   '<tr><td>4 Thursday: Say It Back</td><td>4, 7</td><td>School, academy, match, phone</td><td>A 3P brief for a school group. Listen, Mirror, Check at training. Backing up a quiet teammate.</td></tr>'+
-   '<tr><td>5 Saturday: The Story We Tell</td><td>5, 6, 8</td><td>Match, academy, phone, park</td><td>Moving on from blame. Set, Play, Review. Someone, Want, Obstacle, Change. Optional CALM with a frustrated friend.</td></tr>'+
-   '<tr><td>6 Saturday: Second Chance</td><td>6, 4</td><td>Library, academy, match, stream desk</td><td>Keeping a promise. Telling the story on stream. Respect for opponents.</td></tr>'+
+   '<tr><td>4 Thursday: Say It Back</td><td>4, 7</td><td>School, academy, match, phone</td><td>A 3P brief for a school group. Naming the listening barriers. Listen, Mirror, Check at training. A stranger online who asks for a secret.</td></tr>'+
+   '<tr><td>5 Saturday: The Story We Tell</td><td>5, 6, 8</td><td>Match, academy, phone, park</td><td>School comes first. Moving on from blame. Set, Play, Review. Someone, Want, Obstacle, Change. Optional CALM with a frustrated friend.</td></tr>'+
+   '<tr><td>6 Saturday: Second Chance</td><td>6, 4</td><td>Library, academy, match, stream desk</td><td>Keeping a promise. Listen, Mirror, Check under match pressure. Telling the story on stream. Respect for opponents.</td></tr>'+
    '<tr><td>7 Saturday: Calm Under Pressure</td><td>7, 8</td><td>Home, academy, arena, match</td><td>A 3P brief and a CALM reset in a tense final. A career choice.</td></tr></tbody>';
   tw.append(t);w.append(tw);
   w.append(el('h2','sec-h','How it plays'));
   const ul=el('ul');['Each chapter is one day: before school, school, after school, evening and night. The bar at the top shows the time.',
-   'Free time happens on the town map. Every side activity earns points with a teammate, a friend or a skill, but costs energy. Energy only comes back when you sleep (3 each night), so students cannot do everything.',
+   'Free time happens on the town map. Every side activity earns points with a teammate, a friend or a skill, but costs energy. Resting gives 1 energy back and sleep gives 3, so students cannot do everything.',
    'Energy matters in the main story. Fresh players (5 or more) get slower timers. Players running on empty (1 or less) get faster timers and lose 10% on call builders.',
-   'After every choice, a flash shows exactly what was gained and what was lost.',
-   'Relationships start low. At 10 a teammate becomes Trusted and gives a perk. Below 0 they are Strained and it costs the player. Dee drops 1 on any day the player does not make time for her.',
-   'Some replies are timed. If the bar runs out, the player says nothing, and that has consequences too. Set timers to Relaxed or Off for students who need more time.',
+   'After every choice, a flash at the top right shows exactly what was gained and what was lost.',
+   'Relationships start low. At '+CLOSE_AT+' a person is Close and gives a small perk. At '+PERK_AT+' they are Trusted and the perk is stronger. Below 0 they are Strained and it costs the player. Dee drops 1 on any day the player does not make time for her.',
+   'The main roster offer at the end needs three things: Coach Raman at '+OFFER_COACH+' or more, '+OFFER_SKILLS+' or more skill points in total, and at least '+OFFER_CLOSE+' teammates who are Close. Time spent with the team matters as much as getting calls right.',
+   'Some replies are timed. The time allowed depends on how much there is to read. If the bar runs out, the player says nothing, and that has consequences too. Timers stop while the Menu, Team or Log panel is open. Set timers to Relaxed or Off, from the title screen or the Menu, for students who need more time.',
+   'The order of the options is shuffled every time, so students have to read them.',
+   "Theo's voice (in the Menu) reads the calls aloud in the listening drills, using the browser's built-in speech. It needs headphones in a classroom, and the text still shows.",
    'Small choices pay off later. For example, listening properly to Dee on the bus on Day 3 decides whether she can get to the grand final.',
-   'Progress saves in this browser only. Use "Jump to a chapter" to start any day fresh for a lesson.'].forEach(x=>ul.append(el('li',null,x)));
+   'On Day 4 an adult the player does not know asks them to keep a secret from their coach. Telling a parent or the coach is rewarded. It is a good moment to stop and talk about online safety.',
+   'Each recap has a Copy my results button and a Print button, so students can paste or print their choices for their workbook.',
+   'Progress saves in this browser only. On a shared device, check the name on the Continue button, or start a New career. "Jump to a chapter" starts any day with a typical save from the days before.'].forEach(x=>ul.append(el('li',null,x)));
   w.append(ul);
   w.append(el('h2','sec-h','Discussion questions'));
-  const ul2=el('ul');['Which choice was the hardest to make in time? What made it hard?','How did you spend your free time on the map? Would you change that?','Where did you see a message get lost, at school or in the game, and what fixed it?','Pick one moment where staying silent mattered. Was silence the right call?','Which ending did you get? What would you do differently next run?'].forEach(x=>ul2.append(el('li',null,x)));
+  const ul2=el('ul');['Which choice was the hardest to make in time? What made it hard?','How did you spend your free time on the map? Would you change that?','Where did you see a message get lost, at school or in the game, and what fixed it?','Pick one moment where staying silent mattered. Was silence the right call?','Ryder asked you to keep his offer from your coach. What made that a warning sign? Who would you tell?','Which ending did you get? What would you do differently next run?'].forEach(x=>ul2.append(el('li',null,x)));
   w.append(ul2);
   const b=el('button','btn','Back');b.type='button';b.onclick=showTitle;const r=el('div','row');r.append(b);w.append(r);
   ov.append(w);ov.scrollTop=0;
